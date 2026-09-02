@@ -22,8 +22,13 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
     const subscription = await subscriptionService.createSubscription(req.auth.userId, data);
     return created(subscription, "Subscription created successfully");
   } catch (err: unknown) {
-    if (err instanceof Error && err.message === "PRODUCT_NOT_FOUND") {
-      return badRequest("One or more products were not found or inactive");
+    if (err instanceof Error) {
+      if (err.message === "INVALID_ADDRESS") {
+        return badRequest("Invalid or unauthorized delivery address");
+      }
+      if (err.message === "PRODUCT_NOT_FOUND") {
+        return badRequest("One or more products were not found or inactive");
+      }
     }
     console.error("[POST /api/subscriptions]", err);
     return serverError();

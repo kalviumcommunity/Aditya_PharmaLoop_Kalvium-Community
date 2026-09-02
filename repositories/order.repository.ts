@@ -3,6 +3,7 @@ import { OrderStatus, Prisma } from "@/app/generated/prisma";
 
 export interface CreateOrderData {
   userId: string;
+  addressId: string;
   items: Array<{
     productId: string;
     quantity: number;
@@ -11,7 +12,8 @@ export interface CreateOrderData {
   total: Prisma.Decimal;
 }
 
-const ORDER_INCLUDE = {
+export const ORDER_INCLUDE = {
+  address: true,
   items: {
     include: { product: true },
   },
@@ -25,6 +27,7 @@ export const orderRepository = {
     return prisma.order.create({
       data: {
         userId: data.userId,
+        addressId: data.addressId,
         total: data.total,
         items: {
           create: data.items.map((item) => ({

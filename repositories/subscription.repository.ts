@@ -3,13 +3,15 @@ import { SubscriptionFrequency, SubscriptionStatus } from "@/app/generated/prism
 
 export interface CreateSubscriptionData {
   userId: string;
+  addressId: string;
   frequency: SubscriptionFrequency;
   nextRefillDate: Date;
   refillTime: string;
   items: Array<{ productId: string; quantity: number }>;
 }
 
-const SUBSCRIPTION_INCLUDE = {
+export const SUBSCRIPTION_INCLUDE = {
+  address: true,
   items: {
     include: { product: true },
   },
@@ -23,6 +25,7 @@ export const subscriptionRepository = {
     return prisma.subscription.create({
       data: {
         userId: data.userId,
+        addressId: data.addressId,
         frequency: data.frequency,
         nextRefillDate: data.nextRefillDate,
         refillTime: data.refillTime,
@@ -55,6 +58,7 @@ export const subscriptionRepository = {
   async update(
     id: string,
     data: Partial<{
+      addressId: string;
       status: SubscriptionStatus;
       nextRefillDate: Date;
       pausedAt: Date | null;

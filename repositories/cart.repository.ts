@@ -33,7 +33,7 @@ export const cartRepository = {
     return prisma.cartItem.upsert({
       where: { cartId_productId: { cartId, productId } },
       create: { cartId, productId, quantity },
-      update: { quantity },
+      update: { quantity: { increment: quantity } },
       include: { product: true },
     });
   },

@@ -42,6 +42,7 @@ export type UpdateCartItemInput = z.infer<typeof updateCartItemSchema>;
 // ─── Subscriptions ───────────────────────────────────────────────────────────
 
 export const createSubscriptionSchema = z.object({
+  addressId: z.string().min(1, "Delivery address is required"),
   frequency: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY"]),
   nextRefillDate: z.string().datetime({ message: "nextRefillDate must be an ISO 8601 date-time" }),
   refillTime: z.string().regex(/^\d{2}:\d{2}$/, "refillTime must be HH:MM"),
@@ -55,9 +56,14 @@ export const createSubscriptionSchema = z.object({
     .min(1, "At least one item is required"),
 });
 
-export const patchSubscriptionSchema = z.object({
-  action: z.enum(["pause", "resume", "cancel", "skip"]),
-});
+export const patchSubscriptionSchema = z
+  .object({
+    action: z.enum(["pause", "resume", "cancel", "skip"]).optional(),
+    addressId: z.string().min(1, "Address ID cannot be empty").optional(),
+  })
+  .refine((data) => data.action !== undefined || data.addressId !== undefined, {
+    message: "At least one of 'action' or 'addressId' must be provided",
+  });
 
 export type CreateSubscriptionInput = z.infer<typeof createSubscriptionSchema>;
 export type PatchSubscriptionInput = z.infer<typeof patchSubscriptionSchema>;

@@ -31,11 +31,12 @@ export const PATCH = withAuth(
 
     try {
       const updated = await subscriptionService.applyAction(req.auth.userId, id, data);
-      return ok(updated, `Subscription action '${data.action}' applied`);
+      return ok(updated, "Subscription updated successfully");
     } catch (err: unknown) {
       if (err instanceof Error) {
         if (err.message === "NOT_FOUND") return notFound("Subscription not found");
         if (err.message === "FORBIDDEN") return forbidden("Access denied");
+        if (err.message === "INVALID_ADDRESS") return badRequest("Invalid or unauthorized delivery address");
         if (err.message === "INVALID_STATUS") return badRequest("Action not allowed for current subscription status");
       }
       console.error("[PATCH /api/subscriptions/[id]]", err);

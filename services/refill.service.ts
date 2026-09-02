@@ -1,6 +1,7 @@
+import { prisma } from "@/lib/prisma";
 import { Prisma, SubscriptionFrequency } from "@/app/generated/prisma";
 import { subscriptionRepository } from "@/repositories/subscription.repository";
-import { orderRepository } from "@/repositories/order.repository";
+import { ORDER_INCLUDE } from "@/repositories/order.repository";
 import { paymentService } from "./payment.service";
 import { notificationService } from "./notification.service";
 
@@ -40,7 +41,20 @@ export const refillService = {
 
     for (const sub of dueSubscriptions) {
       try {
-        // Send pre-refill reminder
+        // 1. Verify subscription's stored delivery address
+        if (!sub.address || sub.address.userId !== sub.userId) {
+          await notificationService.send({
+            userId: sub.userId,
+            type: "REFILL",
+            title: "Refill Alert: Invalid Delivery Address",
+            message: `Your scheduled refill could not be created because the delivery address associated with your subscription is invalid or no longer exists. Please update your subscription delivery address.`,
+          });
+          failed++;
+          continue;
+        }
+        const deliveryAddressId = sub.addressId;
+
+        // 2. Send pre-refill reminder
         await notificationService.send({
           userId: sub.userId,
           type: "REFILL",
@@ -48,8 +62,8 @@ export const refillService = {
           message: `Your scheduled refill is being processed now.`,
         });
 
-        // Calculate total for this refill
-        const orderItems = sub.items.map((item) => ({
+        // 3. Calculate total and format order items
+        const orderItems = sub.items.map((item: (typeof sub.items)[number]) => ({
           productId: item.productId,
           quantity: item.quantity,
           price: item.product.price,
@@ -61,14 +75,53 @@ export const refillService = {
           new Prisma.Decimal(0)
         );
 
-        // Create the order
-        const order = await orderRepository.create({
-          userId: sub.userId,
-          items: orderItems,
-          total,
+        // 4. Atomic transaction: validate stock, deduct inventory, and create order
+        const order = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+          for (const item of sub.items) {
+            const product = await tx.product.findUnique({
+              where: { id: item.productId },
+            });
+
+            if (!product || !product.isActive) {
+              throw new Error(`INACTIVE_PRODUCTS: ${product?.name ?? item.productId}`);
+            }
+
+            if (product.stock < item.quantity) {
+              throw new Error(
+                `INSUFFICIENT_STOCK: ${product.name} only has ${product.stock} in stock`
+              );
+            }
+
+            await tx.product.update({
+              where: { id: item.productId },
+              data: {
+                stock: {
+                  decrement: item.quantity,
+                },
+              },
+            });
+          }
+
+          const createdOrder = await tx.order.create({
+            data: {
+              userId: sub.userId,
+              addressId: deliveryAddressId,
+              total,
+              items: {
+                create: orderItems.map((item: { productId: string; quantity: number; price: Prisma.Decimal }) => ({
+                  productId: item.productId,
+                  quantity: item.quantity,
+                  price: item.price,
+                })),
+              },
+            },
+            include: ORDER_INCLUDE,
+          });
+
+          return createdOrder;
         });
 
-        // Notify order creation
+        // 5. Notify order creation
         await notificationService.send({
           userId: sub.userId,
           type: "ORDER",
@@ -76,24 +129,34 @@ export const refillService = {
           message: `A new order has been created for your ${sub.frequency.toLowerCase()} refill.`,
         });
 
-        // Process payment
-        await paymentService.processPayment(order.id, total, sub.userId);
+        // 6. Process payment
+        const payment = await paymentService.processPayment(order.id, total, sub.userId);
 
-        // Advance the subscription's next refill date
-        const nextRefillDate = addFrequencyPeriod(sub.nextRefillDate, sub.frequency);
-        await subscriptionRepository.update(sub.id, { nextRefillDate });
-
-        processed++;
+        // 7. Advance subscription ONLY if payment succeeded
+        if (payment && payment.status === "SUCCESS") {
+          const nextRefillDate = addFrequencyPeriod(sub.nextRefillDate, sub.frequency);
+          await subscriptionRepository.update(sub.id, { nextRefillDate });
+          processed++;
+        } else {
+          // Payment failed (either retryable PENDING or final FAILED).
+          // Do NOT advance nextRefillDate so the failed cycle is not skipped.
+          // paymentService has already logged the attempt and notified the user.
+          // The order remains in PENDING status for manual retry.
+          failed++;
+        }
       } catch (err) {
         console.error(`[RefillService] Failed to process subscription ${sub.id}:`, err);
         failed++;
 
         // Notify user of processing failure
+        const errorMessage = err instanceof Error ? err.message : "";
         await notificationService.send({
           userId: sub.userId,
           type: "REFILL",
           title: "Refill Processing Error",
-          message: `There was an issue processing your scheduled refill. Our team has been notified.`,
+          message: errorMessage.startsWith("INSUFFICIENT_STOCK")
+            ? `Your scheduled refill could not be processed due to insufficient stock. We will retry once restocked.`
+            : `There was an issue processing your scheduled refill. Our team has been notified.`,
         });
       }
     }

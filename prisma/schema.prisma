@@ -41,7 +41,9 @@ model Address {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders        Order[]
+  subscriptions Subscription[]
 
   @@index([userId])
 }
@@ -99,16 +101,19 @@ enum OrderStatus {
 model Order {
   id        String      @id @default(cuid())
   userId    String
+  addressId String
   status    OrderStatus @default(PENDING)
   total     Decimal     @db.Decimal(10, 2)
   createdAt DateTime    @default(now())
   updatedAt DateTime    @updatedAt
 
   user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  address Address     @relation(fields: [addressId], references: [id], onDelete: Restrict)
   items   OrderItem[]
   payment Payment?
 
   @@index([userId])
+  @@index([addressId])
   @@index([status])
   @@index([createdAt])
 }
@@ -180,6 +185,7 @@ enum SubscriptionStatus {
 model Subscription {
   id             String                @id @default(cuid())
   userId         String
+  addressId      String
   frequency      SubscriptionFrequency
   nextRefillDate DateTime
   refillTime     String
@@ -189,10 +195,12 @@ model Subscription {
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
 
-  user  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items SubscriptionItem[]
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address Address            @relation(fields: [addressId], references: [id], onDelete: Restrict)
+  items   SubscriptionItem[]
 
   @@index([userId])
+  @@index([addressId])
   @@index([status])
   @@index([nextRefillDate])
 }
@@ -235,4 +243,3 @@ model Notification {
   @@index([isRead])
   @@index([createdAt])
 }
- 

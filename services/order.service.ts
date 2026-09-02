@@ -1,6 +1,7 @@
+import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma";
 import { cartRepository } from "@/repositories/cart.repository";
-import { orderRepository } from "@/repositories/order.repository";
+import { orderRepository, ORDER_INCLUDE } from "@/repositories/order.repository";
 import { addressRepository } from "@/repositories/address.repository";
 import { paymentService } from "./payment.service";
 import { CreateOrderInput } from "@/types";
@@ -8,7 +9,8 @@ import { CreateOrderInput } from "@/types";
 export const orderService = {
   /**
    * Creates a one-time order from the user's current cart.
-   * Clears the cart after the order is created.
+   * Atomically validates stock, decrements stock, creates the order and items,
+   * and clears the cart inside a Prisma transaction.
    */
   async createOneTimeOrder(userId: string, input: CreateOrderInput) {
     // 1. Validate delivery address exists and belongs to user
@@ -23,14 +25,8 @@ export const orderService = {
       throw new Error("CART_EMPTY");
     }
 
-    // 3. Verify all items in cart are active products
-    const inactiveItems = cart.items.filter((item) => !item.product.isActive);
-    if (inactiveItems.length > 0) {
-      throw new Error("INACTIVE_PRODUCTS_IN_CART");
-    }
-
-    // 4. Compute total from current product prices
-    const orderItems = cart.items.map((item) => ({
+    // 3. Compute total and prepare order item details
+    const orderItems = cart.items.map((item: (typeof cart.items)[number]) => ({
       productId: item.productId,
       quantity: item.quantity,
       price: item.product.price,
@@ -42,20 +38,63 @@ export const orderService = {
       new Prisma.Decimal(0)
     );
 
-    // 5. Create order
-    const order = await orderRepository.create({
-      userId,
-      items: orderItems,
-      total,
+    // 4. Atomic database operations: Stock validation + deduction, Order creation, Cart clearing
+    const order = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      for (const item of cart.items) {
+        const product = await tx.product.findUnique({
+          where: { id: item.productId },
+        });
+
+        if (!product || !product.isActive) {
+          throw new Error("INACTIVE_PRODUCTS_IN_CART");
+        }
+
+        if (product.stock < item.quantity) {
+          throw new Error(
+            `INSUFFICIENT_STOCK: ${product.name} only has ${product.stock} available in stock`
+          );
+        }
+
+        // Deduct product inventory
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            stock: {
+              decrement: item.quantity,
+            },
+          },
+        });
+      }
+
+      // Create order and order items with address relation
+      const createdOrder = await tx.order.create({
+        data: {
+          userId,
+          addressId: input.addressId,
+          total,
+          items: {
+            create: orderItems.map((item: { productId: string; quantity: number; price: Prisma.Decimal }) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              price: item.price,
+            })),
+          },
+        },
+        include: ORDER_INCLUDE,
+      });
+
+      // Clear cart items
+      await tx.cartItem.deleteMany({
+        where: { cartId: cart.id },
+      });
+
+      return createdOrder;
     });
 
-    // 6. Clear cart after order creation
-    await cartRepository.clearCart(cart.id);
-
-    // 7. Process payment (updates order status to CONFIRMED if payment succeeds)
+    // 5. Process payment (updates order status to CONFIRMED if payment succeeds)
     await paymentService.processPayment(order.id, total, userId);
 
-    // 8. Return fresh order from DB with updated status & payment relations
+    // 6. Return fresh order from DB with updated status & payment relations
     const updatedOrder = await orderRepository.findById(order.id);
     return updatedOrder ?? order;
   },

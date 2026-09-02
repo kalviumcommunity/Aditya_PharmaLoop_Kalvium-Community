@@ -32,6 +32,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       if (err.message === "INACTIVE_PRODUCTS_IN_CART") {
         return badRequest("Cart contains inactive or unavailable products");
       }
+      if (err.message.startsWith("INSUFFICIENT_STOCK")) {
+        return badRequest(err.message.replace(/^INSUFFICIENT_STOCK:\s*/, ""));
+      }
     }
     console.error("[POST /api/orders]", err);
     return serverError();
