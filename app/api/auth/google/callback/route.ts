@@ -3,6 +3,8 @@ import {
   consumeOAuthState,
   verifyGoogleAuthCode,
   isGoogleOAuthConfigured,
+  getPublicAppRedirectUrl,
+  getPostAuthRedirect,
   STATE_COOKIE_NAME,
 } from "@/lib/google-auth";
 import { authService, GoogleOAuthPrismaError } from "@/services/auth.service";
@@ -17,10 +19,9 @@ function logOAuthDiagnostic(
 }
 
 export async function GET(req: NextRequest) {
-  const url = new URL(req.url);
-  const code = url.searchParams.get("code");
-  const state = url.searchParams.get("state");
-  const oauthError = url.searchParams.get("error");
+  const code = req.nextUrl.searchParams.get("code");
+  const state = req.nextUrl.searchParams.get("state");
+  const oauthError = req.nextUrl.searchParams.get("error");
 
   logOAuthDiagnostic("Callback Invoked", {
     hasCode: Boolean(code),
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
   // Handle Google OAuth cancellation or error
   if (oauthError) {
     logOAuthDiagnostic("OAuth Error from Google", { oauthError });
-    const errorUrl = new URL("/login", req.url);
+    const errorUrl = getPublicAppRedirectUrl("/login");
     if (oauthError === "access_denied") {
       errorUrl.searchParams.set("error", "oauth_cancelled");
     } else {
@@ -43,7 +44,7 @@ export async function GET(req: NextRequest) {
   // Validate state and code presence
   if (!code || !state) {
     logOAuthDiagnostic("Missing parameters", { hasCode: Boolean(code), hasState: Boolean(state) });
-    const errorUrl = new URL("/login", req.url);
+    const errorUrl = getPublicAppRedirectUrl("/login");
     errorUrl.searchParams.set("error", "missing_parameters");
     return NextResponse.redirect(errorUrl);
   }
@@ -63,7 +64,7 @@ export async function GET(req: NextRequest) {
       hasCookie: Boolean(existingCookieHeader),
       stateMatches: false,
     });
-    const errorUrl = new URL("/login", req.url);
+    const errorUrl = getPublicAppRedirectUrl("/login");
     errorUrl.searchParams.set("error", "invalid_state");
     const res = NextResponse.redirect(errorUrl);
     res.cookies.delete(STATE_COOKIE_NAME);
@@ -74,7 +75,7 @@ export async function GET(req: NextRequest) {
   // Check if configured
   if (!isGoogleOAuthConfigured()) {
     logOAuthDiagnostic("Google OAuth Not Configured");
-    const errorUrl = new URL("/login", req.url);
+    const errorUrl = getPublicAppRedirectUrl("/login");
     errorUrl.searchParams.set("error", "google_not_configured");
     return NextResponse.redirect(errorUrl);
   }
@@ -97,14 +98,9 @@ export async function GET(req: NextRequest) {
 
     // Determine final redirect destination
     // Rule: ADMIN -> /admin; CUSTOMER -> targetRedirect (or /dashboard)
-    const finalDestination =
-      user.role === "ADMIN"
-        ? "/admin"
-        : targetRedirect && targetRedirect !== "/login" && targetRedirect !== "/register"
-        ? targetRedirect
-        : "/dashboard";
+    const finalDestination = getPostAuthRedirect(user.role, targetRedirect);
 
-    const response = NextResponse.redirect(new URL(finalDestination, req.url));
+    const response = NextResponse.redirect(getPublicAppRedirectUrl(finalDestination));
 
     // Set existing HttpOnly auth_token cookie
     response.cookies.set({
@@ -153,7 +149,7 @@ export async function GET(req: NextRequest) {
     });
 
     console.error("[Google OAuth Callback Error] callback failed");
-    const errorUrl = new URL("/login", req.url);
+    const errorUrl = getPublicAppRedirectUrl("/login");
 
     if (err instanceof Error && err.message === "UNVERIFIED_GOOGLE_EMAIL") {
       errorUrl.searchParams.set("error", "unverified_google_email");

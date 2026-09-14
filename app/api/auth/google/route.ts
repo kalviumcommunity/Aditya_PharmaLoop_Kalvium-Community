@@ -3,19 +3,20 @@ import {
   isGoogleOAuthConfigured,
   generateGoogleAuthUrl,
   createOAuthState,
+  getPublicAppRedirectUrl,
   sanitizeInternalRedirect,
   STATE_COOKIE_NAME,
   STATE_MAX_AGE_SECONDS,
 } from "@/lib/google-auth";
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
+  const { searchParams } = req.nextUrl;
   const rawRedirect = searchParams.get("redirect");
   const targetRedirect = sanitizeInternalRedirect(rawRedirect);
 
   // Check if Google OAuth is configured
   if (!isGoogleOAuthConfigured()) {
-    const errorUrl = new URL("/login", req.url);
+    const errorUrl = getPublicAppRedirectUrl("/login");
     errorUrl.searchParams.set("error", "google_not_configured");
     if (targetRedirect !== "/dashboard") {
       errorUrl.searchParams.set("redirect", targetRedirect);

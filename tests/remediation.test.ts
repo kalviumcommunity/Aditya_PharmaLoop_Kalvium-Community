@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { addMonths } from "@/lib/date-utils";
 import { addFrequencyPeriod, getRefillCycleOrderId } from "@/services/refill.service";
 import { loginRateLimiter } from "@/lib/auth-rate-limit";
@@ -10,10 +10,23 @@ import {
 import {
   createOAuthState,
   consumeOAuthState,
+  getPostAuthRedirect,
+  getPublicAppRedirectUrl,
+  getPublicAppUrl,
   sanitizeInternalRedirect,
   STATE_MAX_AGE_SECONDS,
 } from "@/lib/google-auth";
 import { addCartItemSchema, updateCartItemSchema } from "@/types";
+
+const originalPublicAppUrl = process.env.NEXT_PUBLIC_APP_URL;
+
+afterEach(() => {
+  if (originalPublicAppUrl === undefined) {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+  } else {
+    process.env.NEXT_PUBLIC_APP_URL = originalPublicAppUrl;
+  }
+});
 
 describe("addMonths / MONTHLY refill date (M-03)", () => {
   it("does not overflow Jan 31 into March", () => {
@@ -161,6 +174,46 @@ describe("Google OAuth state validation", () => {
     expect(sanitizeInternalRedirect("https://evil.com")).toBe("/dashboard");
     expect(sanitizeInternalRedirect("//evil.com")).toBe("/dashboard");
     expect(sanitizeInternalRedirect("/orders/1")).toBe("/orders/1");
+  });
+
+  it("uses NEXT_PUBLIC_APP_URL for production error and success redirects", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://pharmaloop-k55v.onrender.com/";
+
+    expect(getPublicAppRedirectUrl("/login?error=auth_failed").toString()).toBe(
+      "https://pharmaloop-k55v.onrender.com/login?error=auth_failed",
+    );
+    expect(getPublicAppRedirectUrl("/dashboard").toString()).toBe(
+      "https://pharmaloop-k55v.onrender.com/dashboard",
+    );
+  });
+
+  it("preserves localhost development redirects when configured", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+    expect(getPublicAppRedirectUrl("/login").toString()).toBe(
+      "http://localhost:3000/login",
+    );
+  });
+
+  it("fails safely when NEXT_PUBLIC_APP_URL is missing or internal", () => {
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    expect(() => getPublicAppUrl()).toThrow("NEXT_PUBLIC_APP_URL is not configured");
+
+    process.env.NEXT_PUBLIC_APP_URL = "http://0.0.0.0:10000";
+    expect(() => getPublicAppUrl()).toThrow("NEXT_PUBLIC_APP_URL must be a public HTTP(S) origin");
+  });
+
+  it("rejects external browser redirect destinations", () => {
+    process.env.NEXT_PUBLIC_APP_URL = "https://pharmaloop-k55v.onrender.com";
+    expect(() => getPublicAppRedirectUrl("https://evil.example")).toThrow(
+      "OAuth redirect destination must be an internal path",
+    );
+  });
+
+  it("sends ADMIN users to /admin and customers to safe internal destinations", () => {
+    expect(getPostAuthRedirect("ADMIN", "/orders")).toBe("/admin");
+    expect(getPostAuthRedirect("CUSTOMER", "/orders")).toBe("/orders");
+    expect(getPostAuthRedirect("CUSTOMER", "/login")).toBe("/dashboard");
+    expect(getPostAuthRedirect("CUSTOMER", "https://evil.example")).toBe("/dashboard");
   });
 });
 

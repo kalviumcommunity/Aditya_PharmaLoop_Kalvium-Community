@@ -30,6 +30,48 @@ export function isGoogleOAuthConfigured(): boolean {
 }
 
 /**
+ * Returns the browser-facing application origin used for OAuth redirects.
+ * Render's HOSTNAME/PORT and request host are container concerns and must
+ * never be used as a public redirect base.
+ */
+export function getPublicAppUrl(): string {
+  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (!configuredUrl) {
+    throw new Error("NEXT_PUBLIC_APP_URL is not configured");
+  }
+
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(configuredUrl);
+  } catch {
+    throw new Error("NEXT_PUBLIC_APP_URL is invalid");
+  }
+
+  if (
+    (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") ||
+    !parsedUrl.hostname ||
+    parsedUrl.hostname === "0.0.0.0" ||
+    parsedUrl.username ||
+    parsedUrl.password ||
+    (parsedUrl.pathname !== "/" && parsedUrl.pathname !== "") ||
+    parsedUrl.search ||
+    parsedUrl.hash
+  ) {
+    throw new Error("NEXT_PUBLIC_APP_URL must be a public HTTP(S) origin");
+  }
+
+  return parsedUrl.origin;
+}
+
+/** Builds a public browser URL for a validated internal application path. */
+export function getPublicAppRedirectUrl(internalPath: string): URL {
+  if (sanitizeInternalRedirect(internalPath) !== internalPath) {
+    throw new Error("OAuth redirect destination must be an internal path");
+  }
+  return new URL(internalPath, getPublicAppUrl());
+}
+
+/**
  * Derives the canonical Google OAuth callback URI.
  * Uses exact http://localhost:3000/api/auth/google/callback in development,
  * or GOOGLE_REDIRECT_URI / NEXT_PUBLIC_APP_URL in production.
@@ -38,8 +80,8 @@ export function getGoogleRedirectUri(): string {
   if (process.env.GOOGLE_REDIRECT_URI) {
     return process.env.GOOGLE_REDIRECT_URI;
   }
-  if (process.env.NODE_ENV === "production" && process.env.NEXT_PUBLIC_APP_URL) {
-    return `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/api/auth/google/callback`;
+  if (process.env.NODE_ENV === "production") {
+    return `${getPublicAppUrl()}/api/auth/google/callback`;
   }
   return "http://localhost:3000/api/auth/google/callback";
 }
@@ -60,6 +102,16 @@ export function sanitizeInternalRedirect(redirect: string | null | undefined): s
     return trimmed;
   }
   return "/dashboard";
+}
+
+/** Resolves the post-auth destination without allowing public or auth-page redirects. */
+export function getPostAuthRedirect(role: string, targetRedirect: string | null | undefined): string {
+  if (role === "ADMIN") return "/admin";
+
+  const safeRedirect = sanitizeInternalRedirect(targetRedirect);
+  return safeRedirect === "/login" || safeRedirect === "/register"
+    ? "/dashboard"
+    : safeRedirect;
 }
 
 /**
