@@ -33,6 +33,10 @@ export const authService = {
       throw new Error("INVALID_CREDENTIALS");
     }
 
+    if (user.emailVerifiedAt === null) {
+      throw new Error("EMAIL_NOT_VERIFIED");
+    }
+
     // Strip password from returned user object
     const { password, ...safeUser } = user;
     void password;

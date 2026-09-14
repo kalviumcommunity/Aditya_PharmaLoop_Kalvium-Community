@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/app/generated/prisma";
 import { cartRepository } from "@/repositories/cart.repository";
-import { orderRepository, ORDER_INCLUDE } from "@/repositories/order.repository";
+import {
+  orderRepository,
+  ORDER_INCLUDE,
+} from "@/repositories/order.repository";
 import { addressRepository } from "@/repositories/address.repository";
 import { paymentService } from "./payment.service";
 import { CreateOrderInput } from "@/types";
@@ -33,66 +36,80 @@ export const orderService = {
     }));
 
     const total = orderItems.reduce(
-      (sum: Prisma.Decimal, item: { productId: string; quantity: number; price: Prisma.Decimal }) =>
-        sum.plus(new Prisma.Decimal(item.price.toString()).times(item.quantity)),
-      new Prisma.Decimal(0)
+      (
+        sum: Prisma.Decimal,
+        item: { productId: string; quantity: number; price: Prisma.Decimal },
+      ) =>
+        sum.plus(
+          new Prisma.Decimal(item.price.toString()).times(item.quantity),
+        ),
+      new Prisma.Decimal(0),
     );
 
     // 4. Atomic database operations: Stock validation + deduction, Order creation, Cart clearing
-    const order = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-      for (const item of cart.items) {
-        const product = await tx.product.findUnique({
-          where: { id: item.productId },
-        });
+    const order = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        for (const item of cart.items) {
+          const product = await tx.product.findUnique({
+            where: { id: item.productId },
+          });
 
-        if (!product || !product.isActive) {
-          throw new Error("INACTIVE_PRODUCTS_IN_CART");
+          if (!product || !product.isActive) {
+            throw new Error("INACTIVE_PRODUCTS_IN_CART");
+          }
+
+          if (product.stock < item.quantity) {
+            throw new Error(
+              `INSUFFICIENT_STOCK: ${product.name} only has ${product.stock} available in stock`,
+            );
+          }
+
+          // Deduct product inventory
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stock: {
+                decrement: item.quantity,
+              },
+            },
+          });
         }
 
-        if (product.stock < item.quantity) {
-          throw new Error(
-            `INSUFFICIENT_STOCK: ${product.name} only has ${product.stock} available in stock`
-          );
-        }
-
-        // Deduct product inventory
-        await tx.product.update({
-          where: { id: item.productId },
+        // Create order and order items with address relation
+        const createdOrder = await tx.order.create({
           data: {
-            stock: {
-              decrement: item.quantity,
+            userId,
+            addressId: input.addressId,
+            total,
+            items: {
+              create: orderItems.map(
+                (item: {
+                  productId: string;
+                  quantity: number;
+                  price: Prisma.Decimal;
+                }) => ({
+                  productId: item.productId,
+                  quantity: item.quantity,
+                  price: item.price,
+                }),
+              ),
             },
           },
+          include: ORDER_INCLUDE,
         });
-      }
 
-      // Create order and order items with address relation
-      const createdOrder = await tx.order.create({
-        data: {
-          userId,
-          addressId: input.addressId,
-          total,
-          items: {
-            create: orderItems.map((item: { productId: string; quantity: number; price: Prisma.Decimal }) => ({
-              productId: item.productId,
-              quantity: item.quantity,
-              price: item.price,
-            })),
-          },
-        },
-        include: ORDER_INCLUDE,
-      });
+        // Clear cart items
+        await tx.cartItem.deleteMany({
+          where: { cartId: cart.id },
+        });
 
-      // Clear cart items
-      await tx.cartItem.deleteMany({
-        where: { cartId: cart.id },
-      });
+        return createdOrder;
+      },
+    );
 
-      return createdOrder;
-    });
-
-    // 5. Process payment (updates order status to CONFIRMED if payment succeeds)
-    await paymentService.processPayment(order.id, total, userId);
+    // 5. Create the local pending payment. Razorpay checkout is started separately
+    // and the order is confirmed only after server-side signature verification.
+    await paymentService.processPayment(order.id, total, input.paymentMethod);
 
     // 6. Return fresh order from DB with updated status & payment relations
     const updatedOrder = await orderRepository.findById(order.id);

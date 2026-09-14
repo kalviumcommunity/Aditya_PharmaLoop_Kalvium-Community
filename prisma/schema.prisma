@@ -13,14 +13,15 @@ enum UserRole {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  name      String
-  email     String   @unique
-  phone     String?  @unique
-  password  String
-  role      UserRole @default(CUSTOMER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String    @id @default(cuid())
+  name            String
+  email           String    @unique
+  phone           String?   @unique
+  password        String
+  role            UserRole  @default(CUSTOMER)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   addresses     Address[]
   subscriptions Subscription[]
@@ -139,6 +140,11 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum PaymentMethod {
+  ONLINE
+  COD
+}
+
 enum PaymentAttemptStatus {
   PENDING
   SUCCESS
@@ -146,12 +152,21 @@ enum PaymentAttemptStatus {
 }
 
 model Payment {
-  id        String        @id @default(cuid())
-  orderId   String        @unique
-  amount    Decimal       @db.Decimal(10, 2)
-  status    PaymentStatus @default(PENDING)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id                       String        @id @default(cuid())
+  orderId                  String        @unique
+  amount                   Decimal       @db.Decimal(10, 2)
+  status                   PaymentStatus @default(PENDING)
+  paymentMethod            PaymentMethod @default(ONLINE)
+  provider                 String?
+  providerOrderId          String?       @unique
+  providerPaymentId        String?       @unique
+  providerSignature        String?
+  currency                 String?
+  providerStatus           String?
+  providerErrorCode        String?
+  providerErrorDescription String?
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
 
   order    Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
   attempts PaymentAttempt[]
@@ -242,4 +257,33 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([createdAt])
+}
+
+enum VerificationType {
+  SIGNUP
+  PASSWORD_RESET
+}
+
+model EmailVerification {
+  id               String           @id @default(cuid())
+  email            String
+  type             VerificationType @default(SIGNUP)
+  name             String?
+  phone            String?
+  passwordHash     String?
+  otpHash          String
+  resetTokenHash   String?
+  resetTokenExpiry DateTime?
+  expiresAt        DateTime
+  attempts         Int              @default(0)
+  maxAttempts      Int              @default(5)
+  lastSentAt       DateTime         @default(now())
+  isConsumed       Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([email, type])
+  @@index([email])
+  @@index([expiresAt])
+  @@index([resetTokenHash])
 }

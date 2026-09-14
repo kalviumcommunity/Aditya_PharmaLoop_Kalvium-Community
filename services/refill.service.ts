@@ -2,13 +2,18 @@ import { prisma } from "@/lib/prisma";
 import { Prisma, SubscriptionFrequency } from "@/app/generated/prisma";
 import { subscriptionRepository } from "@/repositories/subscription.repository";
 import { ORDER_INCLUDE } from "@/repositories/order.repository";
+import { paymentRepository } from "@/repositories/payment.repository";
 import { paymentService } from "./payment.service";
 import { notificationService } from "./notification.service";
 
 /**
- * Compute the next refill date from a given date based on frequency.
+ * Compute the next refill date from a given date based on frequency and refill time.
  */
-function addFrequencyPeriod(from: Date, frequency: SubscriptionFrequency): Date {
+export function addFrequencyPeriod(
+  from: Date,
+  frequency: SubscriptionFrequency,
+  refillTime?: string,
+): Date {
   const next = new Date(from);
   switch (frequency) {
     case "WEEKLY":
@@ -21,27 +26,49 @@ function addFrequencyPeriod(from: Date, frequency: SubscriptionFrequency): Date 
       next.setMonth(next.getMonth() + 1);
       break;
   }
+  if (refillTime && /^\d{2}:\d{2}$/.test(refillTime)) {
+    const [hours, minutes] = refillTime.split(":").map(Number);
+    next.setHours(hours, minutes, 0, 0);
+  }
   return next;
+}
+
+/**
+ * Generates a deterministic, cycle-specific Order ID for a scheduled subscription refill.
+ * This guarantees PostgreSQL primary key level idempotency and crash recovery across worker runs.
+ */
+export function getRefillCycleOrderId(
+  subscriptionId: string,
+  cycleDate: Date,
+): string {
+  const cycleTimestamp = new Date(cycleDate).getTime();
+  return `refill_${subscriptionId}_${cycleTimestamp}`;
 }
 
 export const refillService = {
   /**
    * Process all subscriptions that are due for a refill.
    * This is called by the internal `/api/internal/process-refills` endpoint
-   * and should be triggered by a cron job in production.
+   * and can be triggered on a recurring worker/cron schedule.
    *
    * Each subscription is processed independently so one failure doesn't
-   * block the others.
+   * block others.
    */
-  async processDueRefills(): Promise<{ processed: number; failed: number }> {
-    const dueSubscriptions = await subscriptionRepository.findDue();
+  async processDueRefills(
+    asOf: Date = new Date(),
+  ): Promise<{ processed: number; failed: number }> {
+    const dueSubscriptions = await subscriptionRepository.findDue(asOf);
 
     let processed = 0;
     let failed = 0;
 
     for (const sub of dueSubscriptions) {
       try {
-        // 1. Verify subscription's stored delivery address
+        // 1. Verify subscription is active and has valid delivery address
+        if (sub.status !== "ACTIVE") {
+          continue;
+        }
+
         if (!sub.address || sub.address.userId !== sub.userId) {
           await notificationService.send({
             userId: sub.userId,
@@ -54,102 +81,186 @@ export const refillService = {
         }
         const deliveryAddressId = sub.addressId;
 
-        // 2. Send pre-refill reminder
-        await notificationService.send({
-          userId: sub.userId,
-          type: "REFILL",
-          title: "Refill Reminder",
-          message: `Your scheduled refill is being processed now.`,
+        // 2. Deterministic cycle order ID
+        const refillOrderId = getRefillCycleOrderId(sub.id, sub.nextRefillDate);
+
+        // 3. Inspect if an order was ALREADY created for this exact refill cycle (Idempotency & Crash Recovery)
+        let order = await prisma.order.findUnique({
+          where: { id: refillOrderId },
+          include: ORDER_INCLUDE,
         });
 
-        // 3. Calculate total and format order items
-        const orderItems = sub.items.map((item: (typeof sub.items)[number]) => ({
-          productId: item.productId,
-          quantity: item.quantity,
-          price: item.product.price,
-        }));
-
-        const total = orderItems.reduce(
-          (sum: Prisma.Decimal, item: { productId: string; quantity: number; price: Prisma.Decimal }) =>
-            sum.plus(new Prisma.Decimal(item.price.toString()).times(item.quantity)),
-          new Prisma.Decimal(0)
-        );
-
-        // 4. Atomic transaction: validate stock, deduct inventory, and create order
-        const order = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-          for (const item of sub.items) {
-            const product = await tx.product.findUnique({
-              where: { id: item.productId },
-            });
-
-            if (!product || !product.isActive) {
-              throw new Error(`INACTIVE_PRODUCTS: ${product?.name ?? item.productId}`);
-            }
-
-            if (product.stock < item.quantity) {
-              throw new Error(
-                `INSUFFICIENT_STOCK: ${product.name} only has ${product.stock} in stock`
-              );
-            }
-
-            await tx.product.update({
-              where: { id: item.productId },
-              data: {
-                stock: {
-                  decrement: item.quantity,
-                },
-              },
-            });
-          }
-
-          const createdOrder = await tx.order.create({
-            data: {
-              userId: sub.userId,
-              addressId: deliveryAddressId,
-              total,
-              items: {
-                create: orderItems.map((item: { productId: string; quantity: number; price: Prisma.Decimal }) => ({
-                  productId: item.productId,
-                  quantity: item.quantity,
-                  price: item.price,
-                })),
-              },
-            },
-            include: ORDER_INCLUDE,
+        if (!order) {
+          // Pre-refill notification
+          await notificationService.send({
+            userId: sub.userId,
+            type: "REFILL",
+            title: "Refill Reminder",
+            message: `Your scheduled refill is being processed now.`,
           });
 
-          return createdOrder;
-        });
+          // 4. Atomic transaction: validate live subscription, validate stock, deduct inventory, and create order
+          const createdOrder = await prisma
+            .$transaction(async (tx: Prisma.TransactionClient) => {
+              // Re-fetch subscription to guarantee we use current persisted configuration
+              const freshSub = await tx.subscription.findUnique({
+                where: { id: sub.id },
+                include: {
+                  address: true,
+                  items: { include: { product: true } },
+                },
+              });
 
-        // 5. Notify order creation
-        await notificationService.send({
-          userId: sub.userId,
-          type: "ORDER",
-          title: "Scheduled Order Created",
-          message: `A new order has been created for your ${sub.frequency.toLowerCase()} refill.`,
-        });
+              if (!freshSub || freshSub.status !== "ACTIVE") {
+                throw new Error("SUBSCRIPTION_INACTIVE_OR_CANCELLED");
+              }
 
-        // 6. Process payment
-        const payment = await paymentService.processPayment(order.id, total, sub.userId);
+              // Check race condition within transaction
+              const raceCheck = await tx.order.findUnique({
+                where: { id: refillOrderId },
+                include: ORDER_INCLUDE,
+              });
+              if (raceCheck) return raceCheck;
 
-        // 7. Advance subscription ONLY if payment succeeded
+              if (
+                !freshSub.address ||
+                freshSub.address.userId !== freshSub.userId
+              ) {
+                throw new Error("INVALID_ADDRESS");
+              }
+
+              if (!freshSub.items || freshSub.items.length === 0) {
+                throw new Error("EMPTY_SUBSCRIPTION_ITEMS");
+              }
+
+              const orderItems = freshSub.items.map((item) => ({
+                productId: item.productId,
+                quantity: item.quantity,
+                price: item.product.price,
+              }));
+
+              const total = orderItems.reduce(
+                (sum: Prisma.Decimal, item) =>
+                  sum.plus(
+                    new Prisma.Decimal(item.price.toString()).times(
+                      item.quantity,
+                    ),
+                  ),
+                new Prisma.Decimal(0),
+              );
+
+              // Validate product stock & decrement atomically
+              for (const item of freshSub.items) {
+                const product = await tx.product.findUnique({
+                  where: { id: item.productId },
+                });
+
+                if (!product || !product.isActive) {
+                  throw new Error(
+                    `INACTIVE_PRODUCTS: ${product?.name ?? item.productId}`,
+                  );
+                }
+
+                if (product.stock < item.quantity) {
+                  throw new Error(
+                    `INSUFFICIENT_STOCK: ${product.name} only has ${product.stock} in stock`,
+                  );
+                }
+
+                await tx.product.update({
+                  where: { id: item.productId },
+                  data: {
+                    stock: {
+                      decrement: item.quantity,
+                    },
+                  },
+                });
+              }
+
+              const newOrder = await tx.order.create({
+                data: {
+                  id: refillOrderId,
+                  userId: freshSub.userId,
+                  addressId: deliveryAddressId,
+                  total,
+                  items: {
+                    create: orderItems.map((item) => ({
+                      productId: item.productId,
+                      quantity: item.quantity,
+                      price: item.price,
+                    })),
+                  },
+                },
+                include: ORDER_INCLUDE,
+              });
+
+              return newOrder;
+            })
+            .catch(async (txErr) => {
+              // Idempotency & race recovery: if another worker created the order concurrently, recover it
+              const existing = await prisma.order.findUnique({
+                where: { id: refillOrderId },
+                include: ORDER_INCLUDE,
+              });
+              if (existing) return existing;
+              throw txErr;
+            });
+
+          order = createdOrder;
+
+          // Notify order creation
+          await notificationService.send({
+            userId: sub.userId,
+            type: "ORDER",
+            title: "Scheduled Order Created",
+            message: `A new order has been created for your ${sub.frequency.toLowerCase()} refill.`,
+          });
+        }
+
+        // 5. Payment processing & Idempotency / Retry Handling
+        let payment =
+          order.payment ?? (await paymentRepository.findByOrder(order.id));
+
+        if (!payment || payment.status !== "SUCCESS") {
+          const attemptCount = payment
+            ? await paymentRepository.countAttempts(payment.id)
+            : 0;
+          if (attemptCount < 3) {
+            // Interactive Razorpay Checkout cannot run in a background worker.
+            // Leave the cycle pending for an authenticated customer retry.
+            payment = await paymentService.processPayment(
+              order.id,
+              order.total,
+            );
+          }
+        }
+
+        // 6. Advance subscription ONLY if payment succeeded
         if (payment && payment.status === "SUCCESS") {
-          const nextRefillDate = addFrequencyPeriod(sub.nextRefillDate, sub.frequency);
+          const nextRefillDate = addFrequencyPeriod(
+            sub.nextRefillDate,
+            sub.frequency,
+            sub.refillTime,
+          );
           await subscriptionRepository.update(sub.id, { nextRefillDate });
           processed++;
         } else {
-          // Payment failed (either retryable PENDING or final FAILED).
+          // Payment failed or still pending.
           // Do NOT advance nextRefillDate so the failed cycle is not skipped.
-          // paymentService has already logged the attempt and notified the user.
-          // The order remains in PENDING status for manual retry.
           failed++;
         }
-      } catch (err) {
-        console.error(`[RefillService] Failed to process subscription ${sub.id}:`, err);
+      } catch (err: unknown) {
+        console.error(
+          `[RefillService] Failed to process subscription ${sub.id}:`,
+          err,
+        );
         failed++;
 
-        // Notify user of processing failure
         const errorMessage = err instanceof Error ? err.message : "";
+        if (errorMessage === "SUBSCRIPTION_INACTIVE_OR_CANCELLED") {
+          continue;
+        }
+
         await notificationService.send({
           userId: sub.userId,
           type: "REFILL",

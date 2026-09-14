@@ -7,6 +7,7 @@ export interface CreateUserData {
   phone?: string;
   password: string;
   role?: UserRole;
+  emailVerifiedAt?: Date | null;
 }
 
 export const userRepository = {
@@ -19,6 +20,7 @@ export const userRepository = {
         email: true,
         phone: true,
         role: true,
+        emailVerifiedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -37,6 +39,7 @@ export const userRepository = {
         phone: data.phone,
         password: data.password,
         role: data.role ?? "CUSTOMER",
+        emailVerifiedAt: data.emailVerifiedAt,
       },
       select: {
         id: true,
@@ -44,6 +47,7 @@ export const userRepository = {
         email: true,
         phone: true,
         role: true,
+        emailVerifiedAt: true,
         createdAt: true,
       },
     });
