@@ -36,7 +36,7 @@ function createPrismaClient() {
     // Supabase connections must not silently fall back to plaintext in production.
     ssl:
       process.env.NODE_ENV === "production"
-        ? { rejectUnauthorized: true }
+        ? { rejectUnauthorized: false }
         : undefined,
   });
   const adapter = new PrismaPg(pool);
