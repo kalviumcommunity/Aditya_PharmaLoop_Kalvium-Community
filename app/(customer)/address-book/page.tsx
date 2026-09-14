@@ -188,12 +188,13 @@ export default function AddressBookPage() {
       });
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
-        throw new Error(json.message || "Failed to delete address");
+        throw new Error(json.error || json.message || "Failed to delete address");
       }
+      setError(null);
       await fetchAddresses();
     } catch (err: unknown) {
       console.error("[AddressBook] Delete error:", err);
-      alert(err instanceof Error ? err.message : "Failed to delete address");
+      setError(err instanceof Error ? err.message : "Failed to delete address");
     }
   };
 

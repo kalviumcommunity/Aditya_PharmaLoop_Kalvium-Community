@@ -9,16 +9,23 @@ export const GET = withAdminAuth(async (req: AuthenticatedRequest) => {
     const statusParam = searchParams.get("status");
     const searchParam = searchParams.get("search");
     const typeParam = searchParams.get("type"); // STOREFRONT | REFILL
-    const sortBy = searchParams.get("sortBy") === "total" ? "total" : "createdAt";
+    const sortBy =
+      searchParams.get("sortBy") === "total" ? "total" : "createdAt";
     const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
 
     const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
-    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "20", 10)));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt(searchParams.get("limit") || "20", 10)),
+    );
     const skip = (page - 1) * limit;
 
     const where: Prisma.OrderWhereInput = {};
 
-    if (statusParam && Object.values(OrderStatus).includes(statusParam as OrderStatus)) {
+    if (
+      statusParam &&
+      Object.values(OrderStatus).includes(statusParam as OrderStatus)
+    ) {
       where.status = statusParam as OrderStatus;
     }
 
@@ -59,7 +66,9 @@ export const GET = withAdminAuth(async (req: AuthenticatedRequest) => {
               id: true,
               quantity: true,
               price: true,
-              product: { select: { id: true, name: true, price: true, stock: true } },
+              product: {
+                select: { id: true, name: true, price: true, stock: true },
+              },
             },
           },
           payment: {
@@ -72,7 +81,12 @@ export const GET = withAdminAuth(async (req: AuthenticatedRequest) => {
               currency: true,
               providerOrderId: true,
               attempts: {
-                select: { id: true, status: true, failureReason: true, createdAt: true },
+                select: {
+                  id: true,
+                  status: true,
+                  failureReason: true,
+                  createdAt: true,
+                },
                 orderBy: { createdAt: "desc" },
                 take: 3,
               },

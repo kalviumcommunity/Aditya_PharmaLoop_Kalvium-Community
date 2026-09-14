@@ -2,7 +2,7 @@ import { withAuth, AuthenticatedRequest } from "@/lib/middleware";
 import { addressService } from "@/services/address.service";
 import { validateBody } from "@/lib/validate";
 import { addressSchema } from "@/types";
-import { ok, notFound, forbidden, serverError } from "@/lib/response";
+import { ok, notFound, forbidden, conflict, serverError } from "@/lib/response";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -37,6 +37,16 @@ export const DELETE = withAuth(
       if (err instanceof Error) {
         if (err.message === "NOT_FOUND") return notFound("Address not found");
         if (err.message === "FORBIDDEN") return forbidden("Access denied");
+        if (err.message === "ADDRESS_IN_USE_SUBSCRIPTION") {
+          return conflict(
+            "This address is used by an active subscription. Pause or update the subscription before deleting it.",
+          );
+        }
+        if (err.message === "ADDRESS_IN_USE_ORDER") {
+          return conflict(
+            "This address is referenced by an existing order and cannot be deleted.",
+          );
+        }
       }
       console.error("[DELETE /api/addresses/[id]]", err);
       return serverError();

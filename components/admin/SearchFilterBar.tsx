@@ -53,6 +53,7 @@ export default function SearchFilterBar({
           </div>
           <input
             type="text"
+            suppressHydrationWarning
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={searchPlaceholder}

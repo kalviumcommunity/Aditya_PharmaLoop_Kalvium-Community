@@ -104,7 +104,7 @@ export const GET = withAdminAuth(async () => {
 
     // Pre-fetch all cycle orders in a single batch to eliminate N+1 queries
     const cycleOrderIds = subscriptions.map((sub) =>
-      getRefillCycleOrderId(sub.id, sub.nextRefillDate)
+      getRefillCycleOrderId(sub.id, sub.nextRefillDate),
     );
     const existingOrders = await prisma.order.findMany({
       where: { id: { in: cycleOrderIds } },
@@ -133,63 +133,63 @@ export const GET = withAdminAuth(async () => {
       const cycleOrderId = getRefillCycleOrderId(sub.id, sub.nextRefillDate);
       const existingOrder = orderMap.get(cycleOrderId);
 
-        if (sub.status === "PAUSED") {
-          observationalStatus = "Paused by Customer";
-          autoPayStatus = "Subscription Paused";
-          badgeColor = "amber";
-        } else if (sub.status === "CANCELLED") {
-          observationalStatus = "Cancelled";
-          autoPayStatus = "Subscription Inactive";
-          badgeColor = "slate";
-        } else if (sub.nextRefillDate <= now) {
-          isDue = true;
-          if (existingOrder) {
-            const lastAttempt = existingOrder.payment?.attempts?.[0];
-            if (existingOrder.payment?.status === "SUCCESS") {
-              observationalStatus = "Processed (Paid)";
-              autoPayStatus = "Verified (Paid)";
-              badgeColor = "emerald";
-            } else if (
-              existingOrder.payment?.status === "FAILED" ||
-              lastAttempt?.status === "FAILED"
-            ) {
-              observationalStatus = "Payment Failed";
-              autoPayStatus = "Payment Failed";
-              badgeColor = "rose";
-            } else {
-              observationalStatus = "Processing";
-              autoPayStatus = "In Progress";
-              badgeColor = "amber";
-            }
+      if (sub.status === "PAUSED") {
+        observationalStatus = "Paused by Customer";
+        autoPayStatus = "Subscription Paused";
+        badgeColor = "amber";
+      } else if (sub.status === "CANCELLED") {
+        observationalStatus = "Cancelled";
+        autoPayStatus = "Subscription Inactive";
+        badgeColor = "slate";
+      } else if (sub.nextRefillDate <= now) {
+        isDue = true;
+        if (existingOrder) {
+          const lastAttempt = existingOrder.payment?.attempts?.[0];
+          if (existingOrder.payment?.status === "SUCCESS") {
+            observationalStatus = "Processed (Paid)";
+            autoPayStatus = "Verified (Paid)";
+            badgeColor = "emerald";
+          } else if (
+            existingOrder.payment?.status === "FAILED" ||
+            lastAttempt?.status === "FAILED"
+          ) {
+            observationalStatus = "Payment Failed";
+            autoPayStatus = "Payment Failed";
+            badgeColor = "rose";
           } else {
-            observationalStatus = "Due";
-            autoPayStatus = "Due (Waiting Automatic Worker)";
+            observationalStatus = "Processing";
+            autoPayStatus = "In Progress";
             badgeColor = "amber";
           }
         } else {
-          observationalStatus = "Waiting for Scheduled Date";
-          autoPayStatus = "Scheduled";
-          badgeColor = "slate";
+          observationalStatus = "Due";
+          autoPayStatus = "Due (Waiting Automatic Worker)";
+          badgeColor = "amber";
         }
+      } else {
+        observationalStatus = "Waiting for Scheduled Date";
+        autoPayStatus = "Scheduled";
+        badgeColor = "slate";
+      }
 
-        return {
-          id: sub.id,
-          cycleOrderId,
-          customer: sub.user.name,
-          customerEmail: sub.user.email,
-          medicines: sub.items
-            .map((item) => `${item.product.name} (×${item.quantity})`)
-            .join(", "),
-          frequency: sub.frequency,
-          scheduledDate: sub.nextRefillDate.toISOString(),
-          refillTime: sub.refillTime,
-          autoPayStatus,
-          observationalStatus,
-          badgeColor,
-          isDue,
-          subscriptionStatus: sub.status,
-        };
-      });
+      return {
+        id: sub.id,
+        cycleOrderId,
+        customer: sub.user.name,
+        customerEmail: sub.user.email,
+        medicines: sub.items
+          .map((item) => `${item.product.name} (×${item.quantity})`)
+          .join(", "),
+        frequency: sub.frequency,
+        scheduledDate: sub.nextRefillDate.toISOString(),
+        refillTime: sub.refillTime,
+        autoPayStatus,
+        observationalStatus,
+        badgeColor,
+        isDue,
+        subscriptionStatus: sub.status,
+      };
+    });
 
     const formattedRecentOrders = recentOrders.map((ord) => ({
       id: ord.id,

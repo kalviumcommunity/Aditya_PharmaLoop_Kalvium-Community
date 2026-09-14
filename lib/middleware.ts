@@ -6,7 +6,10 @@ export interface AuthenticatedRequest extends NextRequest {
   auth: AuthPayload;
 }
 
-type InnerHandler = (req: AuthenticatedRequest, ctx: unknown) => Promise<Response>;
+type InnerHandler = (
+  req: AuthenticatedRequest,
+  ctx: unknown,
+) => Promise<Response>;
 type ExportedHandler = (req: NextRequest, ctx: unknown) => Promise<Response>;
 
 /**

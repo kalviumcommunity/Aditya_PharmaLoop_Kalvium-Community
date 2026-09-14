@@ -328,7 +328,7 @@ export default function DashboardPage() {
               : undefined
           }
           linkText={earliestRefill ? "View Refill Details →" : "Browse Medicines →"}
-          linkHref={earliestRefill ? `/subscriptions/${earliestRefill.subscriptionId}` : "/products"}
+          linkHref={earliestRefill ? `/subscriptions/${earliestRefill.subscriptionId}` : "/dashboard/medicines"}
         />
 
         {/* Card 2: Active Subscriptions */}
@@ -437,7 +437,7 @@ export default function DashboardPage() {
                   Subscribe to your essential medications for timely, automatic delivery directly to your door.
                 </p>
                 <Link
-                  href="/products"
+                  href="/dashboard/medicines"
                   className="mt-4 inline-flex items-center justify-center rounded-xl bg-[#1b5e3b] px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[#154c30] transition-colors"
                 >
                   Explore Medicines &rarr;
@@ -537,7 +537,7 @@ export default function DashboardPage() {
                   Your medicine purchases and scheduled refills will appear here.
                 </p>
                 <Link
-                  href="/products"
+                  href="/dashboard/medicines"
                   className="mt-3 inline-flex items-center justify-center rounded-xl bg-[#1b5e3b] px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#154c30] transition-colors"
                 >
                   Explore Medicines &rarr;

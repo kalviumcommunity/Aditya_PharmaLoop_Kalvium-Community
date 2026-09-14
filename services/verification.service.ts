@@ -67,7 +67,6 @@ export const verificationService = {
     const normalizedEmail = input.email.toLowerCase().trim();
     const trimmedPhone = input.phone?.trim() || undefined;
 
-    // 1. Check if email or phone is already registered in User table
     const existingUser = await userRepository.findByEmail(normalizedEmail);
     if (existingUser) {
       throw new Error("EMAIL_ALREADY_REGISTERED");
@@ -82,36 +81,36 @@ export const verificationService = {
       }
     }
 
-    // 2. Check for an active pending verification and enforce 60-second resend cooldown if recently sent
     const pending = await verificationRepository.findByEmail(normalizedEmail);
     if (pending && !pending.isConsumed) {
-      const elapsedSeconds = (Date.now() - pending.lastSentAt.getTime()) / 1000;
-      if (elapsedSeconds < RESEND_COOLDOWN_SECONDS) {
-        const remaining = Math.ceil(RESEND_COOLDOWN_SECONDS - elapsedSeconds);
+      // Atomic cooldown claim prevents concurrent resend bypass
+      const claimed = await verificationRepository.claimResendCooldown(
+        pending.id,
+        RESEND_COOLDOWN_SECONDS,
+      );
+      if (!claimed) {
+        const elapsedSeconds = (Date.now() - pending.lastSentAt.getTime()) / 1000;
+        const remaining = Math.max(
+          1,
+          Math.ceil(RESEND_COOLDOWN_SECONDS - elapsedSeconds),
+        );
         throw new Error(`RESEND_COOLDOWN:${remaining}`);
       }
     }
 
-    // 3. Hash password using bcrypt (12 salt rounds)
     const passwordHash = await bcrypt.hash(input.password, 12);
-
-    // 4. Generate cryptographically secure 6-digit OTP & HMAC-SHA256 hash
     const otp = generateOtp();
     const otpHash = hashOtp(otp);
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // 5. Send real OTP email FIRST.
-    // If sending fails (e.g. SMTP unconfigured or auth failed), an error is thrown
-    // and no cooldown is imposed on the user.
     await sendVerificationOtpEmail({
       to: normalizedEmail,
       name: input.name.trim(),
       otp,
     });
 
-    // 6. Only persist pending verification record after email was successfully dispatched
     await verificationRepository.upsertPending({
       email: normalizedEmail,
       name: input.name.trim(),
@@ -122,7 +121,6 @@ export const verificationService = {
       lastSentAt: now,
     });
 
-    // 7. Return safe confirmation (OTP, password, and internal secrets are NEVER returned)
     return {
       requiresVerification: true,
       email: normalizedEmail,
@@ -135,39 +133,40 @@ export const verificationService = {
   async resendOtp(email: string): Promise<{ success: boolean; message: string }> {
     const normalizedEmail = email.toLowerCase().trim();
 
-    // 1. If user is already registered, reject
     const existingUser = await userRepository.findByEmail(normalizedEmail);
     if (existingUser) {
       throw new Error("EMAIL_ALREADY_REGISTERED");
     }
 
-    // 2. Locate pending verification
     const pending = await verificationRepository.findByEmail(normalizedEmail);
     if (!pending || pending.isConsumed) {
       throw new Error("NO_PENDING_REGISTRATION");
     }
 
-    // 3. Enforce 60s cooldown
-    const elapsedSeconds = (Date.now() - pending.lastSentAt.getTime()) / 1000;
-    if (elapsedSeconds < RESEND_COOLDOWN_SECONDS) {
-      const remaining = Math.ceil(RESEND_COOLDOWN_SECONDS - elapsedSeconds);
+    const claimed = await verificationRepository.claimResendCooldown(
+      pending.id,
+      RESEND_COOLDOWN_SECONDS,
+    );
+    if (!claimed) {
+      const elapsedSeconds = (Date.now() - pending.lastSentAt.getTime()) / 1000;
+      const remaining = Math.max(
+        1,
+        Math.ceil(RESEND_COOLDOWN_SECONDS - elapsedSeconds),
+      );
       throw new Error(`RESEND_COOLDOWN:${remaining}`);
     }
 
-    // 4. Generate new OTP & hash, reset expiration and attempt count
     const newOtp = generateOtp();
     const newOtpHash = hashOtp(newOtp);
     const now = new Date();
     const newExpiresAt = new Date(now.getTime() + OTP_EXPIRY_MINUTES * 60 * 1000);
 
-    // 5. Send new OTP email FIRST
     await sendVerificationOtpEmail({
       to: normalizedEmail,
       name: pending.name || undefined,
       otp: newOtp,
     });
 
-    // 6. Update pending record in DB only after successful delivery
     await verificationRepository.updateOtp(pending.id, newOtpHash, newExpiresAt, now);
 
     return {
@@ -178,42 +177,44 @@ export const verificationService = {
 
   /**
    * Validates the OTP against the pending verification record.
-   * Upon successful verification, transactionally creates the User in PostgreSQL
-   * and marks the verification record as consumed.
+   * Attempt counting is enforced atomically so concurrent requests cannot
+   * bypass the 5-attempt lockout (TOCTOU-safe).
    */
   async verifyAndCreateUser(email: string, inputOtp: string) {
     const normalizedEmail = email.toLowerCase().trim();
 
-    // 1. Find active pending verification
     const pending = await verificationRepository.findByEmail(normalizedEmail);
     if (!pending || pending.isConsumed || !pending.name || !pending.passwordHash) {
       throw new Error("INVALID_OR_CONSUMED_OTP");
     }
 
-    // 2. Check expiration (10 minutes)
     if (new Date() > pending.expiresAt) {
       throw new Error("OTP_EXPIRED");
     }
 
-    // 3. Check attempts count (max 5)
-    if (pending.attempts >= pending.maxAttempts) {
+    // Atomic attempt claim — concurrent wrong OTPs cannot bypass maxAttempts
+    const claimed = await verificationRepository.claimAttemptAtomic(pending.id);
+    if (!claimed) {
+      const fresh = await verificationRepository.findByEmail(normalizedEmail);
+      if (!fresh || fresh.isConsumed) {
+        throw new Error("INVALID_OR_CONSUMED_OTP");
+      }
+      if (new Date() > fresh.expiresAt) {
+        throw new Error("OTP_EXPIRED");
+      }
       throw new Error("MAX_ATTEMPTS_EXCEEDED");
     }
 
-    // 4. Constant-time comparison of OTP hash
-    const isValid = verifyOtpHash(inputOtp, pending.otpHash);
+    const isValid = verifyOtpHash(inputOtp, claimed.otpHash);
     if (!isValid) {
-      const updated = await verificationRepository.incrementAttempts(pending.id);
-      const remaining = Math.max(0, updated.maxAttempts - updated.attempts);
+      const remaining = Math.max(0, claimed.maxAttempts - claimed.attempts);
       if (remaining === 0) {
         throw new Error("MAX_ATTEMPTS_EXCEEDED");
       }
       throw new Error(`INVALID_OTP:${remaining}`);
     }
 
-    // 5. Atomic Transaction: Create User with emailVerifiedAt and mark verification consumed
     const user = await prisma.$transaction(async (tx) => {
-      // Concurrency guard: Ensure email was not registered in a parallel request
       const raceCheck = await tx.user.findUnique({
         where: { email: normalizedEmail },
       });
@@ -221,22 +222,21 @@ export const verificationService = {
         throw new Error("EMAIL_ALREADY_REGISTERED");
       }
 
-      if (pending.phone) {
+      if (claimed.phone) {
         const phoneRace = await tx.user.findUnique({
-          where: { phone: pending.phone },
+          where: { phone: claimed.phone },
         });
         if (phoneRace) {
           throw new Error("PHONE_ALREADY_REGISTERED");
         }
       }
 
-      // Create new verified customer
       const createdUser = await tx.user.create({
         data: {
-          name: pending.name!,
+          name: claimed.name!,
           email: normalizedEmail,
-          phone: pending.phone || undefined,
-          password: pending.passwordHash!,
+          phone: claimed.phone || undefined,
+          password: claimed.passwordHash!,
           role: "CUSTOMER",
           emailVerifiedAt: new Date(),
         },
@@ -251,16 +251,14 @@ export const verificationService = {
         },
       });
 
-      // Mark verification record consumed
       await tx.emailVerification.update({
-        where: { id: pending.id },
+        where: { id: claimed.id },
         data: { isConsumed: true },
       });
 
       return createdUser;
     });
 
-    // 6. Generate existing JWT token for cookie creation
     const token = signToken(user.id, user.role);
 
     return { user, token };

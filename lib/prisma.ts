@@ -6,15 +6,61 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+/**
+ * Some container launch paths preserve shell-style quotes around environment
+ * values. A quoted DATABASE_URL like `"postgresql://..."` is not a valid URL
+ * for `pg`; normalize the boundary before creating the pool.
+ */
+function normalizeConnectionString(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
 function createPrismaClient() {
   const connectionString =
-    process.env.DATABASE_URL ??
+    normalizeConnectionString(process.env.DATABASE_URL) ??
     "postgresql://placeholder:placeholder@localhost:5432/placeholder";
-  const pool = new Pool({ connectionString });
+  const poolMax = Number(process.env.PG_POOL_MAX ?? "10");
+  const pool = new Pool({
+    connectionString,
+    max: Number.isFinite(poolMax) && poolMax > 0 ? poolMax : 10,
+  });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });
 }
 
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+function getPrismaClient(): PrismaClient {
+  if (
+    globalForPrisma.prisma &&
+    "orderFeedback" in (globalForPrisma.prisma as unknown as Record<string, unknown>)
+  ) {
+    const runtimeFields = (
+      globalForPrisma.prisma as unknown as {
+        _runtimeDataModel?: {
+          models?: { User?: { fields?: Array<{ name: string }> } };
+        };
+      }
+    )._runtimeDataModel?.models?.User?.fields;
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
+    const hasGoogleId =
+      !runtimeFields || runtimeFields.some((f) => f.name === "googleId");
+
+    if (hasGoogleId) {
+      return globalForPrisma.prisma;
+    }
+  }
+  const client = createPrismaClient();
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.prisma = client;
+  }
+  return client;
+}
+
+export const prisma = getPrismaClient();

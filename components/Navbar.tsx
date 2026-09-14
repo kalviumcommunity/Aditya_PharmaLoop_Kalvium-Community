@@ -1,27 +1,63 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [session, setSession] = useState<{ role: string } | null>(null);
   const pathname = usePathname();
   const router = useRouter();
 
+  useEffect(() => {
+    let isCancelled = false;
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!isCancelled && json?.success && json?.data) {
+          setSession({ role: json.data.role });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [pathname]);
+
+  const logoHref = session
+    ? session.role === "ADMIN"
+      ? "/admin"
+      : "/dashboard"
+    : "/";
+
   const navLinks = [
-    { label: "Home", href: "/" },
-    { label: "Medicines", href: "/products" },
-    { label: "Help & Support", href: "/help-support" },
+    { label: "Home", href: logoHref },
+    {
+      label: "Medicines",
+      href: session
+        ? session.role === "ADMIN"
+          ? "/admin/products"
+          : "/dashboard/medicines"
+        : "/products",
+    },
+    {
+      label: "Help & Support",
+      href: session?.role === "CUSTOMER" ? "/dashboard/help-support" : "/help-support",
+    },
   ];
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/products?search=${encodeURIComponent(searchQuery.trim())}`);
+    const query = encodeURIComponent(searchQuery.trim());
+    if (session?.role === "CUSTOMER") {
+      router.push(query ? `/dashboard/medicines?search=${query}` : "/dashboard/medicines");
+    } else if (session?.role === "ADMIN") {
+      router.push(query ? `/admin/products?search=${query}` : "/admin/products");
     } else {
-      router.push("/products");
+      router.push(query ? `/products?search=${query}` : "/products");
     }
   };
 
@@ -72,10 +108,11 @@ export default function Navbar() {
         {/* Right: Search, Login */}
         <div className="hidden md:flex md:items-center md:gap-4">
           {/* Search field form */}
-          <form onSubmit={handleSearchSubmit} className="relative flex items-center">
+          <form onSubmit={handleSearchSubmit} className="relative flex items-center" suppressHydrationWarning>
             <button
               type="submit"
               aria-label="Search"
+              suppressHydrationWarning
               className="absolute left-3 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
             >
               <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -84,6 +121,7 @@ export default function Navbar() {
             </button>
             <input
               type="text"
+              suppressHydrationWarning
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search medicines, health products..."
@@ -91,16 +129,26 @@ export default function Navbar() {
             />
           </form>
 
-          {/* Login / Sign Up Button */}
-          <Link
-            href="/login"
-            className="flex items-center gap-1.5 rounded-xl bg-[#1b5e3b] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#154c30] hover:shadow-md hover:shadow-emerald-900/15 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200"
-          >
-            <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-            </svg>
-            <span>Login / Sign Up</span>
-          </Link>
+          {/* Login / Sign Up or Dashboard Button */}
+          {session ? (
+            <Link
+              href={session.role === "ADMIN" ? "/admin" : "/dashboard"}
+              className="flex items-center gap-1.5 rounded-xl bg-[#1b5e3b] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#154c30] hover:shadow-md hover:shadow-emerald-900/15 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200"
+            >
+              <span>{session.role === "ADMIN" ? "Admin Console" : "Go to Dashboard"}</span>
+              <span>&rarr;</span>
+            </Link>
+          ) : (
+            <Link
+              href="/login"
+              className="flex items-center gap-1.5 rounded-xl bg-[#1b5e3b] px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#154c30] hover:shadow-md hover:shadow-emerald-900/15 hover:-translate-y-0.5 active:scale-[0.98] transition-all duration-200"
+            >
+              <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+              </svg>
+              <span>Login / Sign Up</span>
+            </Link>
+          )}
         </div>
 
         {/* Mobile menu hamburger */}
@@ -127,10 +175,11 @@ export default function Navbar() {
       {/* Mobile dropdown */}
       {mobileMenuOpen && (
         <div className="border-t border-slate-100 bg-white px-4 py-4 md:hidden">
-          <form onSubmit={handleSearchSubmit} className="mb-3">
+          <form onSubmit={handleSearchSubmit} className="mb-3" suppressHydrationWarning>
             <div className="relative flex items-center">
               <input
                 type="text"
+                suppressHydrationWarning
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search medicines, health products..."
@@ -139,6 +188,7 @@ export default function Navbar() {
               <button
                 type="submit"
                 aria-label="Submit search"
+                suppressHydrationWarning
                 className="absolute right-3 text-slate-400"
               >
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -165,16 +215,27 @@ export default function Navbar() {
             ))}
 
             <div className="my-2 border-t border-slate-100 pt-2">
-              <Link
-                href="/login"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-center gap-1.5 rounded-xl bg-[#1b5e3b] py-2.5 text-xs font-bold text-white w-full"
-              >
-                <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
-                </svg>
-                <span>Login / Sign Up</span>
-              </Link>
+              {session ? (
+                <Link
+                  href={session.role === "ADMIN" ? "/admin" : "/dashboard"}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-[#1b5e3b] py-2.5 text-xs font-bold text-white w-full"
+                >
+                  <span>{session.role === "ADMIN" ? "Admin Console" : "Go to Dashboard"}</span>
+                  <span>&rarr;</span>
+                </Link>
+              ) : (
+                <Link
+                  href="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-center gap-1.5 rounded-xl bg-[#1b5e3b] py-2.5 text-xs font-bold text-white w-full"
+                >
+                  <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+                  </svg>
+                  <span>Login / Sign Up</span>
+                </Link>
+              )}
             </div>
           </div>
         </div>

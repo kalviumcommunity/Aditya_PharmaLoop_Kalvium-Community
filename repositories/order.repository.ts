@@ -12,7 +12,7 @@ export interface CreateOrderData {
   total: Prisma.Decimal;
 }
 
-export const ORDER_INCLUDE = {
+export const ORDER_LIST_INCLUDE = {
   address: true,
   items: {
     include: { product: true },
@@ -22,13 +22,22 @@ export const ORDER_INCLUDE = {
   },
 };
 
+export const ORDER_DETAIL_INCLUDE = {
+  ...ORDER_LIST_INCLUDE,
+  feedback: true,
+};
+
+export const ORDER_INCLUDE = ORDER_DETAIL_INCLUDE;
+
 export const orderRepository = {
   async create(data: CreateOrderData) {
+    const now = new Date();
     return prisma.order.create({
       data: {
         userId: data.userId,
         addressId: data.addressId,
         total: data.total,
+        statusChangedAt: now,
         items: {
           create: data.items.map((item) => ({
             productId: item.productId,
@@ -37,14 +46,14 @@ export const orderRepository = {
           })),
         },
       },
-      include: ORDER_INCLUDE,
+      include: ORDER_LIST_INCLUDE,
     });
   },
 
   async findByUser(userId: string) {
     return prisma.order.findMany({
       where: { userId },
-      include: ORDER_INCLUDE,
+      include: ORDER_LIST_INCLUDE,
       orderBy: { createdAt: "desc" },
     });
   },
@@ -56,10 +65,13 @@ export const orderRepository = {
     });
   },
 
-  async updateStatus(id: string, status: OrderStatus) {
+  async updateStatus(id: string, status: OrderStatus, statusChangedAt: Date = new Date()) {
     return prisma.order.update({
       where: { id },
-      data: { status },
+      data: {
+        status,
+        statusChangedAt,
+      },
       include: ORDER_INCLUDE,
     });
   },

@@ -112,6 +112,7 @@ export default function DashboardHeader({ onMenuToggle }: DashboardHeaderProps) 
     setUser(null);
     setProfileOpen(false);
     router.push("/login");
+    router.refresh();
   };
 
   const isPayment = pathname.includes("/payment");
@@ -159,27 +160,27 @@ export default function DashboardHeader({ onMenuToggle }: DashboardHeaderProps) 
           </Link>
         ) : isPayment ? (
           <Link
-            href="/subscriptions/1/schedule"
+            href="/subscriptions"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
           >
             <span>&mdash;</span>
-            <span>Back to Schedule</span>
+            <span>Back to Subscriptions</span>
           </Link>
         ) : isSchedule ? (
           <Link
-            href="/products/1"
+            href="/dashboard/medicines"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
           >
             <span>&mdash;</span>
-            <span>Back to Medicine Details</span>
+            <span>Back to Medicines</span>
           </Link>
         ) : isProductDetail ? (
           <Link
-            href="/dashboard"
+            href="/dashboard/medicines"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 hover:text-slate-900 transition-colors"
           >
             <span>&mdash;</span>
-            <span>Back to Dashboard</span>
+            <span>Back to Medicines</span>
           </Link>
         ) : (
           /* Search Field */
@@ -191,6 +192,7 @@ export default function DashboardHeader({ onMenuToggle }: DashboardHeaderProps) 
             </div>
             <input
               type="text"
+              suppressHydrationWarning
               placeholder="Search medicines, health products, brands..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}

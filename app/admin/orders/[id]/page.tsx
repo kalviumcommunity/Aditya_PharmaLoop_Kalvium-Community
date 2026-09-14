@@ -49,7 +49,14 @@ interface OrderDetail {
   total: string | number;
   createdAt: string;
   updatedAt: string;
+  statusChangedAt?: string | null;
   isRefill: boolean;
+  feedback?: {
+    id: string;
+    rating: number;
+    comment?: string | null;
+    createdAt: string;
+  } | null;
   user: {
     id: string;
     name: string;
@@ -469,6 +476,51 @@ export default function AdminOrderDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Customer Feedback Card (if submitted) */}
+      {order.feedback && (
+        <div className="rounded-2xl bg-white dark:bg-zinc-900 border border-emerald-200 dark:border-emerald-900/50 p-5 shadow-2xs space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+              <span>⭐</span>
+              <span>Customer Feedback &amp; Review</span>
+            </h3>
+            <span className="text-[11px] text-slate-400">
+              Submitted on {formatDate(order.feedback.createdAt)}
+            </span>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex text-amber-400 text-base">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <span key={star}>
+                  {star <= order.feedback!.rating ? "★" : "☆"}
+                </span>
+              ))}
+            </div>
+            <span className="text-xs font-bold text-slate-900 dark:text-white">
+              {order.feedback.rating} / 5 Stars
+            </span>
+            <span className="text-xs text-slate-500 font-medium">
+              (
+              {order.feedback.rating === 5
+                ? "Excellent"
+                : order.feedback.rating === 4
+                  ? "Very Good"
+                  : order.feedback.rating === 3
+                    ? "Good"
+                    : order.feedback.rating === 2
+                      ? "Fair"
+                      : "Poor"}
+              )
+            </span>
+          </div>
+          {order.feedback.comment && (
+            <div className="rounded-xl bg-slate-50 dark:bg-zinc-800/50 border border-slate-100 dark:border-zinc-800 p-3 text-xs text-slate-700 dark:text-slate-300 italic">
+              &ldquo;{order.feedback.comment}&rdquo;
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Ordered Items Table */}
       <div className="rounded-2xl bg-white dark:bg-zinc-900 border border-slate-200/80 dark:border-zinc-800 shadow-2xs overflow-hidden">

@@ -3,7 +3,7 @@ import path from "path";
 import bcrypt from "bcryptjs";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, OrderStatus, PaymentStatus, PaymentAttemptStatus, SubscriptionFrequency, SubscriptionStatus, NotificationType } from "../app/generated/prisma";
+import { PrismaClient, OrderStatus, PaymentStatus, PaymentAttemptStatus, SubscriptionFrequency, SubscriptionStatus, NotificationType } from "../app/generated/prisma/client";
 
 // Load environment variables from .env file
 function loadEnv() {
@@ -28,6 +28,15 @@ function loadEnv() {
 }
 
 loadEnv();
+
+if (process.env.NODE_ENV === "production") {
+  console.error(
+    "[SEED ABORTED] prisma/seed.ts must NEVER be run against a production database.\n" +
+      "It creates known demo/admin credentials intended for local development only.\n" +
+      "Unset NODE_ENV=production or run against a dedicated development database.",
+  );
+  process.exit(1);
+}
 
 const connectionString =
   process.env.DATABASE_URL ??
@@ -218,6 +227,9 @@ const SEED_PRODUCTS = [
 
 async function main() {
   console.log("--- Starting PharmaLoop Idempotent Database Seed ---");
+  console.log(
+    "WARNING: Development seed only. Creates demo@pharmaloop.local / admin@pharmaloop.local with known passwords. NEVER run against production.",
+  );
 
   // 1. Seed Products (Idempotent via name check)
   console.log("Seeding products...");

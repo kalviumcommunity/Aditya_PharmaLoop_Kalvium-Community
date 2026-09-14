@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@/app/generated/prisma": ["./app/generated/prisma/client.ts"]
     }
   },
   "include": [

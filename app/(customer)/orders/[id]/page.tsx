@@ -16,6 +16,15 @@ interface OrderItem {
   };
 }
 
+interface OrderFeedback {
+  id: string;
+  orderId: string;
+  userId: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+}
+
 interface OrderDetail {
   id: string;
   userId: string;
@@ -30,6 +39,7 @@ interface OrderDetail {
   total: string | number;
   createdAt: string;
   updatedAt: string;
+  statusChangedAt?: string | null;
   address: {
     id: string;
     label?: string | null;
@@ -51,6 +61,7 @@ interface OrderDetail {
       createdAt: string;
     }>;
   } | null;
+  feedback?: OrderFeedback | null;
 }
 
 interface UserProfile {
@@ -104,6 +115,13 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
     message: string;
   } | null>(null);
 
+  // Post-delivery feedback state
+  const [feedbackRating, setFeedbackRating] = useState(5);
+  const [hoverRating, setHoverRating] = useState<number | null>(null);
+  const [feedbackComment, setFeedbackComment] = useState("");
+  const [submittingFeedback, setSubmittingFeedback] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+
   useEffect(() => {
     let isCancelled = false;
 
@@ -153,6 +171,72 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
       isCancelled = true;
     };
   }, [rawId]);
+
+  // Polling for delivery progression while in active stages
+  const orderId = order?.id;
+  const orderStatus = order?.status;
+
+  useEffect(() => {
+    if (!orderId || !orderStatus) return;
+
+    // Only active progression stages poll the server
+    const requiresProgression =
+      orderStatus === "CONFIRMED" ||
+      orderStatus === "PROCESSING" ||
+      orderStatus === "SHIPPED";
+
+    if (!requiresProgression) return;
+
+    // Poll every 5 seconds while delivery is in progress
+    const intervalId = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/orders/${orderId}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success && json.data) {
+            setOrder(json.data);
+          }
+        }
+      } catch {
+        // Silently ignore background polling connection drop
+      }
+    }, 5000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [orderId, orderStatus]);
+
+  const handleSubmitFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!order || submittingFeedback) return;
+    setSubmittingFeedback(true);
+    setFeedbackError(null);
+
+    try {
+      const res = await fetch(`/api/orders/${order.id}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating: feedbackRating,
+          comment: feedbackComment.trim() || undefined,
+        }),
+      });
+
+      const json = await res.json();
+      if (res.ok && json.success && json.data) {
+        setOrder((prev) => (prev ? { ...prev, feedback: json.data } : null));
+      } else {
+        setFeedbackError(
+          json.error || json.message || "Failed to submit feedback",
+        );
+      }
+    } catch {
+      setFeedbackError("Network error submitting feedback. Please try again.");
+    } finally {
+      setSubmittingFeedback(false);
+    }
+  };
 
   const handleRetryPayment = async () => {
     if (!order || retryingPayment) return;
@@ -376,33 +460,44 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
           {
             title: "Order Confirmed & Verified",
             time:
-              currentLevel >= 2
-                ? "Confirmed by pharmacy"
-                : "Pending verification",
+              currentLevel > 2
+                ? "Confirmed & verified by pharmacy"
+                : currentLevel === 2
+                  ? "Confirmed by pharmacy · Processing underway"
+                  : "Pending verification",
             completed: currentLevel >= 2,
             current: currentLevel === 2,
           },
           {
             title: "Dispatched from Pharmacy",
             time:
-              currentLevel >= 3
-                ? "Package ready & sealed"
-                : "Awaiting dispatch",
+              currentLevel > 3
+                ? "Dispatched from central pharmacy"
+                : currentLevel === 3
+                  ? "Medicines packaged & sealed at central pharmacy"
+                  : "Awaiting dispatch",
             completed: currentLevel >= 3,
             current: currentLevel === 3,
           },
           {
             title: "Out for Delivery",
             time:
-              currentLevel >= 4 ? "With delivery partner" : "In transit to hub",
+              currentLevel > 4
+                ? "Handed to courier partner for delivery"
+                : currentLevel === 4
+                  ? "Out for delivery with courier partner"
+                  : "In transit to local delivery hub",
             completed: currentLevel >= 4,
             current: currentLevel === 4,
           },
           {
             title: "Delivered",
-            time: currentLevel >= 5 ? "Package delivered" : "Expected soon",
+            time:
+              currentLevel >= 5
+                ? "Package delivered to your doorstep"
+                : "Final doorstep delivery",
             completed: currentLevel >= 5,
-            current: currentLevel === 5,
+            current: false,
           },
         ];
 
@@ -586,6 +681,182 @@ export default function OrderDetailPage({ params }: OrderDetailPageProps) {
               })}
             </div>
           </div>
+
+          {/* Order Delivered Completion Banner */}
+          {order.status === "DELIVERED" && (
+            <div className="rounded-2xl bg-emerald-50/90 border border-emerald-200/80 p-4 sm:p-5 flex items-center justify-between gap-4 shadow-2xs">
+              <div className="flex items-center gap-3.5">
+                <div className="h-10 w-10 rounded-xl bg-[#1b5e3b] text-white flex items-center justify-center text-lg font-bold shadow-xs">
+                  ✓
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-emerald-950">
+                    Order Delivered
+                  </h3>
+                  <p className="text-xs text-emerald-700">
+                    Your medication package has been safely delivered to your doorstep.
+                  </p>
+                </div>
+              </div>
+              <span className="hidden sm:inline-flex rounded-full bg-emerald-100 text-[#1b5e3b] text-[11px] font-bold px-3 py-1 ring-1 ring-emerald-600/20">
+                Delivered
+              </span>
+            </div>
+          )}
+
+          {/* Post-Delivery Feedback Card (Appears only when DELIVERED) */}
+          {order.status === "DELIVERED" && (
+            <div className="glass-card rounded-2xl p-5 sm:p-6 space-y-4 border border-emerald-100/90 bg-white/95 shadow-xs">
+              {order.feedback ? (
+                /* Submitted Feedback State */
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-[#1b5e3b] font-bold text-sm">
+                        ✓
+                      </span>
+                      <h2 className="text-sm font-bold text-slate-900">
+                        Thanks for your feedback!
+                      </h2>
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      Submitted on{" "}
+                      {new Date(order.feedback.createdAt).toLocaleDateString(
+                        "en-US",
+                        {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        },
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-600">
+                    Your review helps us maintain high quality medication delivery and healthcare service.
+                  </p>
+                  <div className="flex items-center gap-2 py-1">
+                    <div className="flex text-amber-400 text-base">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <span key={star}>
+                          {star <= order.feedback!.rating ? "★" : "☆"}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-xs font-bold text-slate-800">
+                      {order.feedback.rating} / 5
+                    </span>
+                    <span className="text-xs text-slate-500 font-medium">
+                      (
+                      {order.feedback.rating === 5
+                        ? "Excellent"
+                        : order.feedback.rating === 4
+                          ? "Very Good"
+                          : order.feedback.rating === 3
+                            ? "Good"
+                            : order.feedback.rating === 2
+                              ? "Fair"
+                              : "Poor"}
+                      )
+                    </span>
+                  </div>
+                  {order.feedback.comment && (
+                    <div className="rounded-xl bg-slate-50 border border-slate-100 p-3 text-xs text-slate-700 italic">
+                      &ldquo;{order.feedback.comment}&rdquo;
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Feedback Submission Form */
+                <form onSubmit={handleSubmitFeedback} className="space-y-4">
+                  <div>
+                    <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <span>⭐</span>
+                      <span>How was your experience?</span>
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Rate your order delivery experience to help us improve our pharmacy services.
+                    </p>
+                  </div>
+
+                  {feedbackError && (
+                    <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 font-medium">
+                      {feedbackError}
+                    </div>
+                  )}
+
+                  {/* Star Rating Selector */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Rate your order
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((star) => {
+                          const active = (hoverRating ?? feedbackRating) >= star;
+                          return (
+                            <button
+                              key={star}
+                              type="button"
+                              onClick={() => setFeedbackRating(star)}
+                              onMouseEnter={() => setHoverRating(star)}
+                              onMouseLeave={() => setHoverRating(null)}
+                              className="text-2xl transition-transform hover:scale-115 focus:outline-hidden cursor-pointer"
+                              aria-label={`Rate ${star} star`}
+                            >
+                              <span
+                                className={
+                                  active ? "text-amber-400" : "text-slate-200"
+                                }
+                              >
+                                ★
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <span className="text-xs font-bold text-slate-700">
+                        {(hoverRating ?? feedbackRating) === 5
+                          ? "Excellent"
+                          : (hoverRating ?? feedbackRating) === 4
+                            ? "Very Good"
+                            : (hoverRating ?? feedbackRating) === 3
+                              ? "Good"
+                              : (hoverRating ?? feedbackRating) === 2
+                                ? "Fair"
+                                : "Poor"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Comment Textarea */}
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                      Additional comments (optional)
+                    </label>
+                    <textarea
+                      value={feedbackComment}
+                      onChange={(e) => setFeedbackComment(e.target.value)}
+                      maxLength={500}
+                      rows={3}
+                      placeholder="Share feedback on packaging, delivery speed, or overall service..."
+                      className="w-full text-xs rounded-xl border border-slate-200 p-3 focus:outline-hidden focus:ring-2 focus:ring-[#1b5e3b]/20 focus:border-[#1b5e3b] transition-all"
+                    />
+                    <div className="text-right text-[10px] text-slate-400 mt-1">
+                      {feedbackComment.length} / 500
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={submittingFeedback}
+                    className="rounded-xl bg-[#1b5e3b] hover:bg-[#154a2e] text-white text-xs font-bold px-4 py-2.5 transition-all shadow-xs disabled:opacity-50 cursor-pointer active:scale-98"
+                  >
+                    {submittingFeedback ? "Submitting..." : "Submit Feedback"}
+                  </button>
+                </form>
+              )}
+            </div>
+          )}
 
           {/* Items Ordered Card */}
           <div className="glass-card rounded-2xl p-5 sm:p-6 space-y-4">

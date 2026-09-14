@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter } from "next/navigation";
 import CustomerSidebar from "@/components/dashboard/CustomerSidebar";
 import DashboardHeader from "@/components/dashboard/DashboardHeader";
 import AnimatedMedicalBackground from "@/components/background/AnimatedMedicalBackground";
@@ -12,7 +12,6 @@ export default function CustomerLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -20,24 +19,28 @@ export default function CustomerLayout({
 
     fetch("/api/auth/me")
       .then((res) => {
-        if (!res.ok) throw new Error("UNAUTHORIZED");
+        if (res.status === 401) {
+          const currentPath =
+            typeof window !== "undefined" ? window.location.pathname : "";
+          router.push(`/login?redirect=${encodeURIComponent(currentPath)}`);
+          return null;
+        }
+        if (!res.ok) return null;
         return res.json();
       })
       .then((json) => {
-        if (!isCancelled && (!json.success || !json.data)) {
-          router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
+        if (!isCancelled && json?.success && json.data) {
+          if (json.data.role === "ADMIN") {
+            router.push("/admin");
+          }
         }
       })
-      .catch(() => {
-        if (!isCancelled) {
-          router.push(`/login?redirect=${encodeURIComponent(pathname)}`);
-        }
-      });
+      .catch(() => {});
 
     return () => {
       isCancelled = true;
     };
-  }, [pathname, router]);
+  }, [router]);
 
   return (
     <div className="relative flex min-h-screen overflow-x-hidden">

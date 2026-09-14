@@ -166,10 +166,10 @@ export default function SubscriptionsPage() {
         setModalAction(null);
         handleReload();
       } else {
-        alert(data.error || "Failed to perform action");
+        setError(data.error || "Failed to perform action");
       }
     } catch {
-      alert("Network error. Please try again.");
+      setError("Network error. Please try again.");
     } finally {
       setLoadingAction(null);
     }

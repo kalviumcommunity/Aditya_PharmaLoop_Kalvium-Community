@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -11,7 +11,38 @@ interface FooterProps {
 export default function Footer({ variant }: FooterProps) {
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
+  const [session, setSession] = useState<{ role: string } | null>(null);
   const pathname = usePathname();
+
+  useEffect(() => {
+    let isCancelled = false;
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!isCancelled && json?.success && json?.data) {
+          setSession({ role: json.data.role });
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const logoHref = session
+    ? session.role === "ADMIN"
+      ? "/admin"
+      : "/dashboard"
+    : "/";
+
+  const shopHref = session
+    ? session.role === "ADMIN"
+      ? "/admin/products"
+      : "/dashboard/medicines"
+    : "/products";
+
+  const helpHref = session?.role === "CUSTOMER" ? "/dashboard/help-support" : "/help-support";
 
   const handleSubscribe = (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,7 +61,7 @@ export default function Footer({ variant }: FooterProps) {
           
           {/* Col 1: Brand (4 cols) */}
           <div className="lg:col-span-4 space-y-3">
-            <Link href="/" className="flex items-center gap-2.5">
+            <Link href={logoHref} className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1b5e3b] text-white shadow-xs">
                 <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2C7.03 2 3 6.03 3 11c0 3.58 2.12 6.67 5.19 8.07.41-.65.95-1.42 1.63-2.31 1.62-2.12 3.8-4.97 3.8-7.76 0-1.28-.43-2.45-1.15-3.37C12.82 5.23 13.43 5 14.1 5c2.76 0 5 2.24 5 5 0 2.51-1.02 4.41-2.47 5.76.15.52.37 1.02.66 1.49C19.34 15.68 21 13.53 21 11c0-4.97-4.03-9-9-9z" />
@@ -63,22 +94,22 @@ export default function Footer({ variant }: FooterProps) {
             </h3>
             <ul className={`mt-3.5 space-y-2.5 text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
               <li>
-                <Link href="/products" className="hover:text-[#1b5e3b] transition-colors">
+                <Link href={shopHref} className="hover:text-[#1b5e3b] transition-colors">
                   Medicines
                 </Link>
               </li>
               <li>
-                <Link href="/products" className="hover:text-[#1b5e3b] transition-colors">
+                <Link href={shopHref} className="hover:text-[#1b5e3b] transition-colors">
                   Health Products
                 </Link>
               </li>
               <li>
-                <Link href="/products" className="hover:text-[#1b5e3b] transition-colors">
+                <Link href={shopHref} className="hover:text-[#1b5e3b] transition-colors">
                   Personal Care
                 </Link>
               </li>
               <li>
-                <Link href="/products" className="hover:text-[#1b5e3b] transition-colors">
+                <Link href={shopHref} className="hover:text-[#1b5e3b] transition-colors">
                   View All
                 </Link>
               </li>
@@ -121,7 +152,7 @@ export default function Footer({ variant }: FooterProps) {
             </h3>
             <ul className={`mt-3.5 space-y-2.5 text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
               <li>
-                <Link href="/help-support" className="hover:text-[#1b5e3b] transition-colors">
+                <Link href={helpHref} className="hover:text-[#1b5e3b] transition-colors">
                   Help &amp; Support
                 </Link>
               </li>

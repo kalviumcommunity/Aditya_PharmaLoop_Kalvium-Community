@@ -2,7 +2,7 @@ import { withAuth, AuthenticatedRequest } from "@/lib/middleware";
 import { cartService } from "@/services/cart.service";
 import { validateBody } from "@/lib/validate";
 import { updateCartItemSchema } from "@/types";
-import { ok, notFound, forbidden, serverError } from "@/lib/response";
+import { ok, notFound, forbidden, badRequest, serverError } from "@/lib/response";
 
 type RouteContext = { params: Promise<{ itemId: string }> };
 
@@ -19,6 +19,10 @@ export const PATCH = withAuth(
       if (err instanceof Error) {
         if (err.message === "ITEM_NOT_FOUND") return notFound("Cart item not found");
         if (err.message === "FORBIDDEN") return forbidden("Access denied");
+        if (err.message === "PRODUCT_NOT_FOUND") return notFound("Product not found");
+        if (err.message.startsWith("INSUFFICIENT_STOCK")) {
+          return badRequest(err.message.replace("INSUFFICIENT_STOCK: ", ""));
+        }
       }
       console.error("[PATCH /api/cart/items/[itemId]]", err);
       return serverError();

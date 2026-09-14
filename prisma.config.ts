@@ -9,6 +9,18 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
+    // Strip Docker --env-file quotes if present (dotenv already strips for local CLI).
+    url: (() => {
+      const raw =
+        process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"] ?? "";
+      const trimmed = raw.trim();
+      if (
+        (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+        (trimmed.startsWith("'") && trimmed.endsWith("'"))
+      ) {
+        return trimmed.slice(1, -1);
+      }
+      return trimmed || undefined;
+    })(),
   },
 });

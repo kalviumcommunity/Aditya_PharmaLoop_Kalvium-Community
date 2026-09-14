@@ -280,7 +280,7 @@ export default function ScheduleRefillPage({ params }: ScheduleRefillPageProps) 
               My Subscriptions
             </Link>
             <Link
-              href="/products"
+              href="/dashboard/medicines"
               className="inline-flex items-center justify-center rounded-xl bg-[#1b5e3b] px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[#154c30] transition-colors"
             >
               &larr; Browse Medicines

@@ -4,6 +4,7 @@ import { OrderStatus } from "@/app/generated/prisma";
 import { validateBody } from "@/lib/validate";
 import { updateOrderStatusSchema } from "@/types";
 import { orderRepository } from "@/repositories/order.repository";
+import { orderService } from "@/services/order.service";
 import { notificationService } from "@/services/notification.service";
 import { ok, badRequest, notFound, serverError } from "@/lib/response";
 
@@ -22,6 +23,8 @@ export const GET = withAdminAuth(
   async (_req: AuthenticatedRequest, ctx: unknown) => {
     const { id } = await (ctx as RouteContext).params;
     try {
+      await orderService.syncDeliveryProgression(id);
+
       const order = await prisma.order.findUnique({
         where: { id },
         include: {
@@ -75,6 +78,7 @@ export const GET = withAdminAuth(
               },
             },
           },
+          feedback: true,
         },
       });
 
@@ -92,7 +96,7 @@ export const GET = withAdminAuth(
       console.error("[GET /api/admin/orders/[id]]", err);
       return serverError();
     }
-  }
+  },
 );
 
 export const PATCH = withAdminAuth(
@@ -115,14 +119,23 @@ export const PATCH = withAdminAuth(
       }
 
       if (existing.status === "DELIVERED" || existing.status === "CANCELLED") {
-        return badRequest(`Cannot modify an order that is already ${existing.status}`);
+        return badRequest(
+          `Cannot modify an order that is already ${existing.status}`,
+        );
       }
 
       if (!VALID_TRANSITIONS[existing.status].includes(data.status)) {
-        return badRequest(`Cannot change order status from ${existing.status} to ${data.status}`);
+        return badRequest(
+          `Cannot change order status from ${existing.status} to ${data.status}`,
+        );
       }
 
       const updated = await orderRepository.updateStatus(id, data.status);
+
+      // H-07: settle COD payment when order reaches DELIVERED
+      if (data.status === "DELIVERED") {
+        await orderService.onOrderDelivered(id);
+      }
 
       // Notify customer of order status change
       await notificationService
@@ -133,7 +146,10 @@ export const PATCH = withAdminAuth(
           message: `Your order #${id.slice(-8)} has been updated to ${data.status.toLowerCase()}.`,
         })
         .catch((err) =>
-          console.warn("[PATCH /api/admin/orders/[id]] Notification dispatch warning:", err)
+          console.warn(
+            "[PATCH /api/admin/orders/[id]] Notification dispatch warning:",
+            err,
+          ),
         );
 
       const enriched = {
@@ -146,5 +162,5 @@ export const PATCH = withAdminAuth(
       console.error("[PATCH /api/admin/orders/[id]]", err);
       return serverError();
     }
-  }
+  },
 );

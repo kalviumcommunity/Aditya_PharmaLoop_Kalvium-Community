@@ -90,11 +90,20 @@ export type UpdateProductInput = z.infer<typeof updateProductSchema>;
 
 export const addCartItemSchema = z.object({
   productId: z.string().min(1, "Product ID is required"),
-  quantity: z.number().int().positive().default(1),
+  quantity: z
+    .number()
+    .int()
+    .positive()
+    .max(999, "Quantity cannot exceed 999")
+    .default(1),
 });
 
 export const updateCartItemSchema = z.object({
-  quantity: z.number().int().positive("Quantity must be a positive integer"),
+  quantity: z
+    .number()
+    .int()
+    .positive("Quantity must be a positive integer")
+    .max(999, "Quantity cannot exceed 999"),
 });
 
 export type AddCartItemInput = z.infer<typeof addCartItemSchema>;
@@ -113,7 +122,7 @@ export const createSubscriptionSchema = z.object({
     .array(
       z.object({
         productId: z.string().min(1),
-        quantity: z.number().int().positive(),
+        quantity: z.number().int().positive().max(999),
       }),
     )
     .min(1, "At least one item is required"),
@@ -173,6 +182,23 @@ export const updateOrderStatusSchema = z.object({
 });
 
 export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
+
+// ─── Feedback ────────────────────────────────────────────────────────────────
+
+export const submitFeedbackSchema = z.object({
+  rating: z
+    .number({ error: "Rating must be a number" })
+    .int("Rating must be an integer")
+    .min(1, "Rating must be at least 1")
+    .max(5, "Rating must be at most 5"),
+  comment: z
+    .string()
+    .max(500, "Comment must not exceed 500 characters")
+    .optional()
+    .nullable(),
+});
+
+export type SubmitFeedbackInput = z.infer<typeof submitFeedbackSchema>;
 
 // ─── Addresses ───────────────────────────────────────────────────────────────
 

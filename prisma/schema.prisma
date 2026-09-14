@@ -7,41 +7,36 @@ datasource db {
   provider = "postgresql"
 }
 
-enum UserRole {
-  CUSTOMER
-  ADMIN
-}
-
 model User {
-  id              String    @id @default(cuid())
+  id              String          @id @default(cuid())
   name            String
-  email           String    @unique
-  phone           String?   @unique
-  password        String
-  role            UserRole  @default(CUSTOMER)
+  email           String          @unique
+  phone           String?         @unique
+  password        String?
+  role            UserRole        @default(CUSTOMER)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
   emailVerifiedAt DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  addresses     Address[]
-  subscriptions Subscription[]
-  cart          Cart?
-  orders        Order[]
-  notifications Notification[]
+  googleId        String?         @unique
+  addresses       Address[]
+  cart            Cart?
+  notifications   Notification[]
+  orders          Order[]
+  feedbacks       OrderFeedback[]
+  subscriptions   Subscription[]
 }
 
 model Address {
-  id         String   @id @default(cuid())
-  userId     String
-  label      String?
-  address    String
-  city       String
-  state      String
-  postalCode String
-  country    String   @default("India")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
+  id            String         @id @default(cuid())
+  userId        String
+  label         String?
+  address       String
+  city          String
+  state         String
+  postalCode    String
+  country       String         @default("India")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   orders        Order[]
   subscriptions Subscription[]
@@ -50,29 +45,27 @@ model Address {
 }
 
 model Product {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  price       Decimal  @db.Decimal(10, 2)
-  imageUrl    String?
-  stock       Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id                String             @id @default(cuid())
+  name              String
+  description       String?
+  price             Decimal            @db.Decimal(10, 2)
+  imageUrl          String?
+  stock             Int                @default(0)
+  isActive          Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   cartItems         CartItem[]
-  subscriptionItems SubscriptionItem[]
   orderItems        OrderItem[]
+  subscriptionItems SubscriptionItem[]
 }
 
 model Cart {
-  id        String   @id @default(cuid())
-  userId    String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items CartItem[]
+  id        String     @id @default(cuid())
+  userId    String     @unique
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     CartItem[]
 }
 
 model CartItem {
@@ -82,12 +75,172 @@ model CartItem {
   quantity  Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  cart    Cart    @relation(fields: [cartId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cart      Cart     @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@unique([cartId, productId])
   @@index([productId])
+}
+
+model Order {
+  id              String         @id @default(cuid())
+  userId          String
+  status          OrderStatus    @default(PENDING)
+  total           Decimal        @db.Decimal(10, 2)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  addressId       String
+  statusChangedAt DateTime?
+  address         Address        @relation(fields: [addressId], references: [id])
+  user            User           @relation(fields: [userId], references: [id])
+  feedback        OrderFeedback?
+  items           OrderItem[]
+  payment         Payment?
+
+  @@index([userId])
+  @@index([addressId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([statusChangedAt])
+}
+
+model OrderItem {
+  id        String  @id @default(cuid())
+  orderId   String
+  productId String
+  quantity  Int
+  price     Decimal @db.Decimal(10, 2)
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product @relation(fields: [productId], references: [id])
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Payment {
+  id                       String           @id @default(cuid())
+  orderId                  String           @unique
+  amount                   Decimal          @db.Decimal(10, 2)
+  status                   PaymentStatus    @default(PENDING)
+  createdAt                DateTime         @default(now())
+  updatedAt                DateTime         @updatedAt
+  provider                 String?
+  providerOrderId          String?          @unique
+  providerPaymentId        String?          @unique
+  providerSignature        String?
+  currency                 String?
+  providerStatus           String?
+  providerErrorCode        String?
+  providerErrorDescription String?
+  paymentMethod            PaymentMethod    @default(ONLINE)
+  order                    Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  attempts                 PaymentAttempt[]
+}
+
+model PaymentAttempt {
+  id            String               @id @default(cuid())
+  paymentId     String
+  status        PaymentAttemptStatus @default(PENDING)
+  createdAt     DateTime             @default(now())
+  failureReason String?
+  payment       Payment              @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([status])
+}
+
+model Subscription {
+  id             String                @id @default(cuid())
+  userId         String
+  frequency      SubscriptionFrequency
+  nextRefillDate DateTime
+  refillTime     String
+  status         SubscriptionStatus    @default(ACTIVE)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  cancelledAt    DateTime?
+  pausedAt       DateTime?
+  addressId      String
+  address        Address               @relation(fields: [addressId], references: [id])
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items          SubscriptionItem[]
+
+  @@index([userId])
+  @@index([addressId])
+  @@index([status])
+  @@index([nextRefillDate])
+}
+
+model SubscriptionItem {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  productId      String
+  quantity       Int          @default(1)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, productId])
+  @@index([productId])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model EmailVerification {
+  id               String           @id @default(cuid())
+  email            String
+  name             String?
+  phone            String?
+  passwordHash     String?
+  otpHash          String
+  expiresAt        DateTime
+  attempts         Int              @default(0)
+  maxAttempts      Int              @default(5)
+  lastSentAt       DateTime         @default(now())
+  isConsumed       Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  resetTokenExpiry DateTime?
+  resetTokenHash   String?
+  type             VerificationType @default(SIGNUP)
+
+  @@unique([email, type])
+  @@index([email])
+  @@index([expiresAt])
+  @@index([resetTokenHash])
+}
+
+model OrderFeedback {
+  id        String   @id @default(cuid())
+  orderId   String   @unique
+  userId    String
+  rating    Int
+  comment   String?
+  createdAt DateTime @default(now())
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([userId])
+}
+
+enum UserRole {
+  CUSTOMER
+  ADMIN
 }
 
 enum OrderStatus {
@@ -97,40 +250,6 @@ enum OrderStatus {
   SHIPPED
   DELIVERED
   CANCELLED
-}
-
-model Order {
-  id        String      @id @default(cuid())
-  userId    String
-  addressId String
-  status    OrderStatus @default(PENDING)
-  total     Decimal     @db.Decimal(10, 2)
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-
-  user    User        @relation(fields: [userId], references: [id], onDelete: Restrict)
-  address Address     @relation(fields: [addressId], references: [id], onDelete: Restrict)
-  items   OrderItem[]
-  payment Payment?
-
-  @@index([userId])
-  @@index([addressId])
-  @@index([status])
-  @@index([createdAt])
-}
-
-model OrderItem {
-  id        String  @id @default(cuid())
-  orderId   String
-  productId String
-  quantity  Int
-  price     Decimal @db.Decimal(10, 2)
-
-  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
-
-  @@index([orderId])
-  @@index([productId])
 }
 
 enum PaymentStatus {
@@ -151,40 +270,6 @@ enum PaymentAttemptStatus {
   FAILED
 }
 
-model Payment {
-  id                       String        @id @default(cuid())
-  orderId                  String        @unique
-  amount                   Decimal       @db.Decimal(10, 2)
-  status                   PaymentStatus @default(PENDING)
-  paymentMethod            PaymentMethod @default(ONLINE)
-  provider                 String?
-  providerOrderId          String?       @unique
-  providerPaymentId        String?       @unique
-  providerSignature        String?
-  currency                 String?
-  providerStatus           String?
-  providerErrorCode        String?
-  providerErrorDescription String?
-  createdAt                DateTime      @default(now())
-  updatedAt                DateTime      @updatedAt
-
-  order    Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  attempts PaymentAttempt[]
-}
-
-model PaymentAttempt {
-  id            String               @id @default(cuid())
-  paymentId     String
-  status        PaymentAttemptStatus @default(PENDING)
-  failureReason String?
-  createdAt     DateTime             @default(now())
-
-  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-
-  @@index([paymentId])
-  @@index([status])
-}
-
 enum SubscriptionFrequency {
   WEEKLY
   BIWEEKLY
@@ -197,44 +282,6 @@ enum SubscriptionStatus {
   CANCELLED
 }
 
-model Subscription {
-  id             String                @id @default(cuid())
-  userId         String
-  addressId      String
-  frequency      SubscriptionFrequency
-  nextRefillDate DateTime
-  refillTime     String
-  status         SubscriptionStatus    @default(ACTIVE)
-  pausedAt       DateTime?
-  cancelledAt    DateTime?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
-
-  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  address Address            @relation(fields: [addressId], references: [id], onDelete: Restrict)
-  items   SubscriptionItem[]
-
-  @@index([userId])
-  @@index([addressId])
-  @@index([status])
-  @@index([nextRefillDate])
-}
-
-model SubscriptionItem {
-  id             String   @id @default(cuid())
-  subscriptionId String
-  productId      String
-  quantity       Int      @default(1)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
-  product      Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@unique([subscriptionId, productId])
-  @@index([productId])
-}
-
 enum NotificationType {
   ORDER
   PAYMENT
@@ -243,47 +290,7 @@ enum NotificationType {
   SYSTEM
 }
 
-model Notification {
-  id        String           @id @default(cuid())
-  userId    String
-  type      NotificationType
-  title     String
-  message   String
-  isRead    Boolean          @default(false)
-  createdAt DateTime         @default(now())
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([isRead])
-  @@index([createdAt])
-}
-
 enum VerificationType {
   SIGNUP
   PASSWORD_RESET
-}
-
-model EmailVerification {
-  id               String           @id @default(cuid())
-  email            String
-  type             VerificationType @default(SIGNUP)
-  name             String?
-  phone            String?
-  passwordHash     String?
-  otpHash          String
-  resetTokenHash   String?
-  resetTokenExpiry DateTime?
-  expiresAt        DateTime
-  attempts         Int              @default(0)
-  maxAttempts      Int              @default(5)
-  lastSentAt       DateTime         @default(now())
-  isConsumed       Boolean          @default(false)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-
-  @@unique([email, type])
-  @@index([email])
-  @@index([expiresAt])
-  @@index([resetTokenHash])
 }

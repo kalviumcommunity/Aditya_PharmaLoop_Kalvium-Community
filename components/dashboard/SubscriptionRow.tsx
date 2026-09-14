@@ -28,6 +28,7 @@ export default function SubscriptionRow({
 }: SubscriptionRowProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -46,6 +47,7 @@ export default function SubscriptionRow({
 
   const handleAction = async (action: "pause" | "resume" | "cancel" | "skip") => {
     setLoadingAction(action);
+    setActionError(null);
     try {
       const res = await fetch(`/api/subscriptions/${id}`, {
         method: "PATCH",
@@ -57,10 +59,10 @@ export default function SubscriptionRow({
         setMenuOpen(false);
         onActionSuccess?.();
       } else {
-        alert(data.error || "Failed to perform action");
+        setActionError(data.error || "Failed to perform action");
       }
     } catch {
-      alert("Network error. Please try again.");
+      setActionError("Network error. Please try again.");
     } finally {
       setLoadingAction(null);
     }
@@ -68,6 +70,9 @@ export default function SubscriptionRow({
 
   return (
     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-3.5 first:pt-0 last:pb-0">
+      {actionError ? (
+        <p className="w-full text-[11px] font-medium text-rose-500">{actionError}</p>
+      ) : null}
       {/* Left: Product Icon & Info */}
       <div className="flex items-center gap-3">
         <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${iconBg} shrink-0`}>

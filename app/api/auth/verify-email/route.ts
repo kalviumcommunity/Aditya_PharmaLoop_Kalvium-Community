@@ -1,4 +1,4 @@
-﻿import { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 import { verificationService } from "@/services/verification.service";
 import { validateBody } from "@/lib/validate";
 import { verifyEmailSchema } from "@/types";
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     // Set HttpOnly auth_token cookie
     response.headers.set(
       "Set-Cookie",
-      `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60}; SameSite=Strict`
+      `auth_token=${token}; HttpOnly; Path=/; Max-Age=${7 * 24 * 60 * 60};${process.env.NODE_ENV === "production" ? " Secure;" : ""} SameSite=Lax`
     );
 
     return response;

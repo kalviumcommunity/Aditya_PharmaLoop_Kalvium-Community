@@ -100,6 +100,59 @@ export const verificationRepository = {
     });
   },
 
+  /**
+   * Atomically claims one OTP verification attempt.
+   * Increments attempts only when not consumed, not expired, and under the max.
+   * Returns the updated row, or null if no attempt slot was available.
+   */
+  async claimAttemptAtomic(id: string) {
+    const rows = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        email: string;
+        otpHash: string;
+        attempts: number;
+        maxAttempts: number;
+        expiresAt: Date;
+        isConsumed: boolean;
+        name: string | null;
+        phone: string | null;
+        passwordHash: string | null;
+      }>
+    >`
+      UPDATE "EmailVerification"
+      SET attempts = attempts + 1,
+          "updatedAt" = NOW()
+      WHERE id = ${id}
+        AND "isConsumed" = false
+        AND "expiresAt" > NOW()
+        AND attempts < "maxAttempts"
+      RETURNING
+        id, email, "otpHash", attempts, "maxAttempts", "expiresAt",
+        "isConsumed", name, phone, "passwordHash"
+    `;
+    return rows[0] ?? null;
+  },
+
+  /**
+   * Atomically claims a resend slot when the cooldown has elapsed.
+   * Returns true if the cooldown was claimed (caller may send email + update OTP).
+   */
+  async claimResendCooldown(
+    id: string,
+    cooldownSeconds: number,
+  ): Promise<boolean> {
+    const affected = await prisma.$executeRaw`
+      UPDATE "EmailVerification"
+      SET "lastSentAt" = NOW(),
+          "updatedAt" = NOW()
+      WHERE id = ${id}
+        AND "isConsumed" = false
+        AND "lastSentAt" <= (NOW() - make_interval(secs => ${cooldownSeconds}))
+    `;
+    return Number(affected) === 1;
+  },
+
   async markConsumed(id: string) {
     return prisma.emailVerification.update({
       where: { id },

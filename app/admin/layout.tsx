@@ -16,7 +16,9 @@ function AdminAccessDenied() {
           Admin Access Denied
         </h2>
         <p className="text-sm text-slate-600 dark:text-slate-400 mb-6 leading-relaxed">
-          You do not have staff administrative privileges to view this portal. PharmaLoop operations and order fulfillment are restricted to verified administrators.
+          You do not have staff administrative privileges to view this portal.
+          PharmaLoop operations and order fulfillment are restricted to verified
+          administrators.
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link

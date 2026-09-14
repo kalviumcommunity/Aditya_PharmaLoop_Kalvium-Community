@@ -2,8 +2,11 @@
 
 import React, { useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
+
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -22,6 +25,27 @@ export default function Home() {
 
     return () => observer.disconnect();
   }, []);
+
+  // Defense-in-depth: Redirect authenticated users to their workspace
+  useEffect(() => {
+    let isCancelled = false;
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!isCancelled && json?.success && json?.data?.role) {
+          if (json.data.role === "ADMIN") {
+            router.push("/admin");
+          } else {
+            router.push("/dashboard");
+          }
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [router]);
 
   return (
     <div className="relative flex-1 flex flex-col justify-center bg-gradient-to-r from-[#f2f9f4] via-[#f6faf4] to-[#fbfdf7] overflow-hidden page-entrance">

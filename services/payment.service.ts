@@ -169,7 +169,7 @@ export const paymentService = {
           });
           await tx.order.update({
             where: { id: orderId },
-            data: { status: "CONFIRMED" },
+            data: { status: "CONFIRMED", statusChangedAt: new Date() },
           });
           return tx.payment.findUnique({
             where: { id: payment.id },
@@ -249,7 +249,67 @@ export const paymentService = {
           : `Payment attempt ${attemptCount} of ${MAX_RETRIES} failed. You can retry again.`,
     });
 
+    // Refill retry exhaustion: restore stock + pause subscription immediately
+    // (worker will also no-op safely if it runs later).
+    if (attemptCount >= MAX_RETRIES && orderId.startsWith("refill_")) {
+      await this.handleRefillPaymentExhausted(userId, orderId);
+    }
+
     return updated;
+  },
+
+  /**
+   * Idempotent cleanup when a refill payment exhausts retries:
+   * cancel order, restore stock once, pause subscription.
+   */
+  async handleRefillPaymentExhausted(userId: string, orderId: string) {
+    const match = orderId.match(/^refill_(.+)_(\d+)$/);
+    if (!match) return;
+    const subscriptionId = match[1];
+
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: true, payment: true },
+      });
+      if (!order || order.userId !== userId) return;
+      if (order.status === "CANCELLED") return;
+      if (order.payment?.status === "SUCCESS") return;
+
+      const cancelled = await tx.order.updateMany({
+        where: { id: orderId, status: { not: "CANCELLED" } },
+        data: { status: "CANCELLED", statusChangedAt: new Date() },
+      });
+      if (cancelled.count === 0) return;
+
+      for (const item of order.items) {
+        await tx.$executeRaw`
+          UPDATE "Product"
+          SET stock = stock + ${item.quantity},
+              "updatedAt" = NOW()
+          WHERE id = ${item.productId}
+        `;
+      }
+
+      if (order.payment && order.payment.status !== "FAILED") {
+        await tx.payment.update({
+          where: { id: order.payment.id },
+          data: { status: "FAILED", providerStatus: "refill_retry_exhausted" },
+        });
+      }
+
+      await tx.subscription.updateMany({
+        where: { id: subscriptionId, status: "ACTIVE", userId },
+        data: { status: "PAUSED", pausedAt: new Date() },
+      });
+    });
+
+    await notificationService.send({
+      userId,
+      type: "REFILL",
+      title: "Subscription Paused: Payment Failed",
+      message: `Your refill payment failed after ${MAX_RETRIES} attempts. Your subscription has been paused and reserved stock was released. You can update payment details and resume from your subscriptions page.`,
+    });
   },
 
   async getPaymentByOrder(userId: string, orderId: string) {

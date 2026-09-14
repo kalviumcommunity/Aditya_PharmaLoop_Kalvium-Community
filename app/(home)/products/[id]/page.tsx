@@ -34,6 +34,44 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [isBuying, setIsBuying] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [deliveryAddress, setDeliveryAddress] = useState<{
+    label?: string | null;
+    address: string;
+    city: string;
+    state: string;
+    postalCode: string;
+  } | null>(null);
+
+  const [catalogHref, setCatalogHref] = useState("/products");
+
+  useEffect(() => {
+    let isCancelled = false;
+    fetch("/api/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!isCancelled && json?.success && json?.data?.role) {
+          if (json.data.role === "ADMIN") {
+            setCatalogHref("/admin/products");
+          } else {
+            setCatalogHref("/dashboard/medicines");
+          }
+        }
+      })
+      .catch(() => {});
+
+    fetch("/api/addresses")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!isCancelled && json?.success && Array.isArray(json.data) && json.data.length > 0) {
+          setDeliveryAddress(json.data[0]);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
 
   const showToast = (text: string, type: "success" | "error" = "success") => {
     setToastMessage({ text, type });
@@ -164,7 +202,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
             {error || "The requested medicine could not be found in our catalog."}
           </p>
           <Link
-            href="/products"
+            href={catalogHref}
             className="inline-flex items-center justify-center rounded-xl bg-[#1b5e3b] px-4 py-2.5 text-xs font-bold text-white shadow-xs hover:bg-[#154c30] transition-colors"
           >
             &larr; Back to All Medicines
@@ -183,7 +221,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
         {/* Breadcrumb / Back Navigation */}
         <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
           <Link
-            href="/products"
+            href={catalogHref}
             className="hover:text-[#1b5e3b] transition-colors flex items-center gap-1"
           >
             <span>&larr;</span>
@@ -393,7 +431,13 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
           {/* Right Column (4 cols): Refill Status, Delivery Info, Action Buttons */}
           <div className="lg:col-span-4 flex flex-col space-y-4">
             <RefillStatusCard productId={product.id} />
-            <DeliveryInfoCard />
+            <DeliveryInfoCard
+              label={deliveryAddress?.label}
+              addressLine={deliveryAddress?.address}
+              city={deliveryAddress?.city}
+              state={deliveryAddress?.state}
+              postalCode={deliveryAddress?.postalCode}
+            />
 
             {/* Purchase Action Buttons */}
             <button
@@ -433,7 +477,7 @@ export default function ProductDetailPage({ params }: ProductDetailPageProps) {
             </Link>
 
             <Link
-              href="/products"
+              href={catalogHref}
               className="w-full rounded-xl border border-slate-200/80 bg-white/80 backdrop-blur-xs py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:text-slate-800 active:scale-[0.98] transition-all flex items-center justify-center shadow-2xs"
             >
               Back to Catalog

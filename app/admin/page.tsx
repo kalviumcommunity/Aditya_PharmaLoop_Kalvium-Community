@@ -49,7 +49,13 @@ interface OrderItem {
 interface OrderData {
   id: string;
   userId: string;
-  status: "PENDING" | "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+  status:
+    | "PENDING"
+    | "CONFIRMED"
+    | "PROCESSING"
+    | "SHIPPED"
+    | "DELIVERED"
+    | "CANCELLED";
   total: string | number;
   createdAt: string;
   isRefill: boolean;
@@ -66,7 +72,10 @@ interface OrderData {
   } | null;
 }
 
-const VALID_TRANSITIONS: Record<OrderData["status"], readonly OrderData["status"][]> = {
+const VALID_TRANSITIONS: Record<
+  OrderData["status"],
+  readonly OrderData["status"][]
+> = {
   PENDING: ["PENDING", "CONFIRMED", "CANCELLED"],
   CONFIRMED: ["CONFIRMED", "PROCESSING", "CANCELLED"],
   PROCESSING: ["PROCESSING", "SHIPPED", "CANCELLED"],
@@ -84,8 +93,13 @@ export default function AdminDashboardPage() {
   const [statusCode, setStatusCode] = useState<number | undefined>();
 
   // Status updating state: orderId -> boolean
-  const [updatingOrders, setUpdatingOrders] = useState<Record<string, boolean>>({});
-  const [feedbackMessage, setFeedbackMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [updatingOrders, setUpdatingOrders] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [feedbackMessage, setFeedbackMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   const fetchOverview = useCallback(async () => {
     try {
@@ -95,7 +109,8 @@ export default function AdminDashboardPage() {
       });
       if (!res.ok) {
         setStatusCode(res.status);
-        if (res.status === 403) throw new Error("Admin authorization required (403)");
+        if (res.status === 403)
+          throw new Error("Admin authorization required (403)");
         throw new Error("Failed to load admin overview");
       }
       const json = await res.json();
@@ -104,7 +119,9 @@ export default function AdminDashboardPage() {
         setRefillQueue(json.data.refillQueue);
       }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Error loading overview data");
+      setError(
+        err instanceof Error ? err.message : "Error loading overview data",
+      );
     }
   }, []);
 
@@ -116,7 +133,8 @@ export default function AdminDashboardPage() {
       });
       if (!res.ok) {
         setStatusCode(res.status);
-        if (res.status === 403) throw new Error("Admin authorization required (403)");
+        if (res.status === 403)
+          throw new Error("Admin authorization required (403)");
         throw new Error("Failed to load orders");
       }
       const json = await res.json();
@@ -155,7 +173,10 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleUpdateStatus = async (orderId: string, newStatus: OrderData["status"]) => {
+  const handleUpdateStatus = async (
+    orderId: string,
+    newStatus: OrderData["status"],
+  ) => {
     setUpdatingOrders((prev) => ({ ...prev, [orderId]: true }));
     setFeedbackMessage(null);
 
@@ -167,10 +188,13 @@ export default function AdminDashboardPage() {
       });
 
       const json = await res.json();
-      if (!res.ok || !json.success) throw new Error(json.error || "Failed to update order status");
+      if (!res.ok || !json.success)
+        throw new Error(json.error || "Failed to update order status");
 
       setOrders((prev) =>
-        prev.map((ord) => (ord.id === orderId ? { ...ord, status: newStatus } : ord))
+        prev.map((ord) =>
+          ord.id === orderId ? { ...ord, status: newStatus } : ord,
+        ),
       );
 
       setFeedbackMessage({
@@ -210,13 +234,48 @@ export default function AdminDashboardPage() {
   };
 
   const moduleShortcuts = [
-    { title: "Orders", href: "/admin/orders", icon: "📦", desc: "Fulfillment & dispatches" },
-    { title: "Products", href: "/admin/products", icon: "💊", desc: "Inventory & catalog" },
-    { title: "Subscriptions", href: "/admin/subscriptions", icon: "🔄", desc: "Regimens & frequency" },
-    { title: "Refills", href: "/admin/refills", icon: "⚙️", desc: "Telemetry & forecast" },
-    { title: "Payments", href: "/admin/payments", icon: "💳", desc: "Financial ledger" },
-    { title: "Customers", href: "/admin/customers", icon: "👥", desc: "Profiles & addresses" },
-    { title: "Alerts", href: "/admin/notifications", icon: "🔔", desc: "Operational telemetry" },
+    {
+      title: "Orders",
+      href: "/admin/orders",
+      icon: "📦",
+      desc: "Fulfillment & dispatches",
+    },
+    {
+      title: "Products",
+      href: "/admin/products",
+      icon: "💊",
+      desc: "Inventory & catalog",
+    },
+    {
+      title: "Subscriptions",
+      href: "/admin/subscriptions",
+      icon: "🔄",
+      desc: "Regimens & frequency",
+    },
+    {
+      title: "Refills",
+      href: "/admin/refills",
+      icon: "⚙️",
+      desc: "Telemetry & forecast",
+    },
+    {
+      title: "Payments",
+      href: "/admin/payments",
+      icon: "💳",
+      desc: "Financial ledger",
+    },
+    {
+      title: "Customers",
+      href: "/admin/customers",
+      icon: "👥",
+      desc: "Profiles & addresses",
+    },
+    {
+      title: "Alerts",
+      href: "/admin/notifications",
+      icon: "🔔",
+      desc: "Operational telemetry",
+    },
   ];
 
   return (
@@ -290,7 +349,10 @@ export default function AdminDashboardPage() {
                 href={m.href}
                 className="group rounded-2xl border border-slate-200/80 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-3 shadow-2xs hover:border-[#1b5e3b] dark:hover:border-emerald-500 hover:shadow-xs transition-all flex flex-col items-center text-center"
               >
-                <span className="text-xl mb-1 group-hover:scale-110 transition-transform" aria-hidden="true">
+                <span
+                  className="text-xl mb-1 group-hover:scale-110 transition-transform"
+                  aria-hidden="true"
+                >
                   {m.icon}
                 </span>
                 <span className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#1b5e3b] dark:group-hover:text-emerald-400">
@@ -305,7 +367,10 @@ export default function AdminDashboardPage() {
 
           {/* Observational Notice Banner */}
           <div className="rounded-2xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/70 dark:border-emerald-800/40 p-4 sm:p-4.5 flex items-start gap-3.5">
-            <div className="rounded-xl bg-emerald-100/80 dark:bg-emerald-900/60 p-2 text-[#1b5e3b] dark:text-emerald-300 shrink-0 text-base" aria-hidden="true">
+            <div
+              className="rounded-xl bg-emerald-100/80 dark:bg-emerald-900/60 p-2 text-[#1b5e3b] dark:text-emerald-300 shrink-0 text-base"
+              aria-hidden="true"
+            >
               ⚙️
             </div>
             <div className="text-xs sm:text-sm">
@@ -313,7 +378,9 @@ export default function AdminDashboardPage() {
                 Automated System Refill Engine
               </h2>
               <p className="mt-0.5 text-emerald-900/80 dark:text-emerald-300/80 leading-relaxed text-xs">
-                PharmaLoop subscription refills are handled automatically by the background system worker according to each patient&apos;s cycle schedule. Zero manual approval or execution is required.
+                PharmaLoop subscription refills are handled automatically by the
+                background system worker according to each patient&apos;s cycle
+                schedule. Zero manual approval or execution is required.
               </p>
             </div>
           </div>
@@ -395,7 +462,8 @@ export default function AdminDashboardPage() {
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                  Scheduled patient subscription cycles handled automatically by the system worker.
+                  Scheduled patient subscription cycles handled automatically by
+                  the system worker.
                 </p>
               </div>
 
@@ -422,19 +490,28 @@ export default function AdminDashboardPage() {
                 <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                   {loading && refillQueue.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-zinc-500 text-xs">
+                      <td
+                        colSpan={6}
+                        className="py-8 text-center text-slate-400 dark:text-zinc-500 text-xs"
+                      >
                         Loading subscription queue...
                       </td>
                     </tr>
                   ) : refillQueue.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-zinc-500 text-xs">
+                      <td
+                        colSpan={6}
+                        className="py-8 text-center text-slate-400 dark:text-zinc-500 text-xs"
+                      >
                         No active subscriptions found in the database.
                       </td>
                     </tr>
                   ) : (
                     refillQueue.map((row) => (
-                      <tr key={row.id} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/40 transition-colors">
+                      <tr
+                        key={row.id}
+                        className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/40 transition-colors"
+                      >
                         <td className="py-3.5 px-4">
                           <div className="font-bold text-slate-900 dark:text-white">
                             {row.customer}
@@ -460,8 +537,8 @@ export default function AdminDashboardPage() {
                               row.autoPayStatus.includes("Paid")
                                 ? "bg-emerald-50 text-[#1b5e3b] dark:bg-emerald-950/40 dark:text-emerald-300"
                                 : row.autoPayStatus.includes("Failed")
-                                ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
-                                : "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400"
+                                  ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+                                  : "bg-slate-100 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400"
                             }`}
                           >
                             {row.autoPayStatus.includes("Paid") && "✓ "}
@@ -474,10 +551,10 @@ export default function AdminDashboardPage() {
                               row.observationalStatus.includes("Paid")
                                 ? "bg-emerald-100 text-[#1b5e3b] dark:bg-emerald-900/60 dark:text-emerald-200"
                                 : row.observationalStatus.includes("Due")
-                                ? "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
-                                : row.observationalStatus.includes("Failed")
-                                ? "bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200"
-                                : "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300"
+                                  ? "bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200"
+                                  : row.observationalStatus.includes("Failed")
+                                    ? "bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200"
+                                    : "bg-slate-100 text-slate-700 dark:bg-zinc-800 dark:text-zinc-300"
                             }`}
                           >
                             {row.observationalStatus}
@@ -499,7 +576,8 @@ export default function AdminDashboardPage() {
                   Recent Orders &amp; Fulfillment
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-zinc-400 mt-0.5">
-                  Recent purchases placed across storefront and recurring subscription refills.
+                  Recent purchases placed across storefront and recurring
+                  subscription refills.
                 </p>
               </div>
 
@@ -526,26 +604,40 @@ export default function AdminDashboardPage() {
                 <tbody className="divide-y divide-slate-100 dark:divide-zinc-800">
                   {loading && orders.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-zinc-500 text-xs">
+                      <td
+                        colSpan={6}
+                        className="py-8 text-center text-slate-400 dark:text-zinc-500 text-xs"
+                      >
                         Loading platform orders...
                       </td>
                     </tr>
                   ) : orders.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-slate-400 dark:text-zinc-500 text-xs">
+                      <td
+                        colSpan={6}
+                        className="py-8 text-center text-slate-400 dark:text-zinc-500 text-xs"
+                      >
                         No orders found in the database.
                       </td>
                     </tr>
                   ) : (
                     orders.map((ord) => {
-                      const isFinal = ord.status === "DELIVERED" || ord.status === "CANCELLED";
+                      const isFinal =
+                        ord.status === "DELIVERED" ||
+                        ord.status === "CANCELLED";
                       const isUpdating = !!updatingOrders[ord.id];
 
                       return (
-                        <tr key={ord.id} className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/40 transition-colors">
+                        <tr
+                          key={ord.id}
+                          className="hover:bg-slate-50/70 dark:hover:bg-zinc-800/40 transition-colors"
+                        >
                           <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
                             <div className="flex items-center gap-1.5">
-                              <Link href={`/admin/orders/${ord.id}`} className="hover:text-[#1b5e3b]">
+                              <Link
+                                href={`/admin/orders/${ord.id}`}
+                                className="hover:text-[#1b5e3b]"
+                              >
                                 #{ord.id.slice(-8)}
                               </Link>
                               {ord.isRefill ? (
@@ -570,7 +662,12 @@ export default function AdminDashboardPage() {
                           <td className="py-3.5 px-4 font-medium text-slate-700 dark:text-zinc-300 max-w-xs">
                             <div className="truncate">
                               {ord.items && ord.items.length > 0
-                                ? ord.items.map((it) => `${it.product?.name ?? "Medicine"} (×${it.quantity})`).join(", ")
+                                ? ord.items
+                                    .map(
+                                      (it) =>
+                                        `${it.product?.name ?? "Medicine"} (×${it.quantity})`,
+                                    )
+                                    .join(", ")
                                 : "No items"}
                             </div>
                           </td>
@@ -591,12 +688,19 @@ export default function AdminDashboardPage() {
                                   value={ord.status}
                                   disabled={isFinal || isUpdating}
                                   onChange={(e) =>
-                                    handleUpdateStatus(ord.id, e.target.value as OrderData["status"])
+                                    handleUpdateStatus(
+                                      ord.id,
+                                      e.target.value as OrderData["status"],
+                                    )
                                   }
                                   aria-label={`Update fulfillment status for order ${ord.id}`}
                                   className="rounded-lg border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-2.5 py-1 text-xs font-semibold text-slate-800 dark:text-zinc-200 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                                 >
-                                  {(VALID_TRANSITIONS[ord.status] || [ord.status]).map((opt) => (
+                                  {(
+                                    VALID_TRANSITIONS[ord.status] || [
+                                      ord.status,
+                                    ]
+                                  ).map((opt) => (
                                     <option key={opt} value={opt}>
                                       {opt}
                                     </option>
