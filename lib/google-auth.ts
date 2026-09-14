@@ -222,11 +222,10 @@ export async function verifyGoogleAuthCode(
     });
     tokens = tokenResponse.tokens;
   } catch (tokenErr: unknown) {
-    const gaxiosErr = tokenErr as { response?: { status?: number; data?: unknown }; message?: string };
+    const gaxiosErr = tokenErr as { response?: { status?: number }; name?: string };
     console.error("[Google Token Exchange Failed]", {
-      message: gaxiosErr?.message,
+      name: gaxiosErr?.name,
       status: gaxiosErr?.response?.status,
-      errorData: gaxiosErr?.response?.data,
     });
     throw tokenErr;
   }

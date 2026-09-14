@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
 import {
   consumeOAuthState,
   verifyGoogleAuthCode,
@@ -9,18 +7,13 @@ import {
 } from "@/lib/google-auth";
 import { authService } from "@/services/auth.service";
 
-function logOAuthDiagnostic(event: string, details?: Record<string, unknown>) {
-  const timestamp = new Date().toISOString();
-  console.log(`[Google OAuth] ${timestamp} ${event}`, details ? JSON.stringify(details) : "");
-  try {
-    const logPath = path.join(process.cwd(), ".oauth_debug.log");
-    fs.appendFileSync(
-      logPath,
-      `[${timestamp}] ${event} ${details ? JSON.stringify(details) : ""}\n`
-    );
-  } catch {
-    // Ignore file logging errors
-  }
+function logOAuthDiagnostic(
+  event: string,
+  details?: Record<string, string | number | boolean | null>,
+) {
+  // Keep Render logs useful without persisting OAuth data or logging identities,
+  // authorization codes, tokens, or provider response bodies.
+  console.info("[Google OAuth]", event, details);
 }
 
 export async function GET(req: NextRequest) {
@@ -92,7 +85,6 @@ export async function GET(req: NextRequest) {
     const verifiedGoogleUser = await verifyGoogleAuthCode(code);
 
     logOAuthDiagnostic("Google Identity Verified", {
-      email: verifiedGoogleUser.email,
       verified: verifiedGoogleUser.emailVerified,
     });
 
@@ -100,7 +92,6 @@ export async function GET(req: NextRequest) {
     const { user, token } = await authService.handleGoogleIdentity(verifiedGoogleUser);
 
     logOAuthDiagnostic("User Identity Resolved", {
-      userId: user.id,
       role: user.role,
     });
 
@@ -151,13 +142,11 @@ export async function GET(req: NextRequest) {
       name?: string;
     };
     logOAuthDiagnostic("Callback Exception Caught", {
-      errorName: gaxiosErr?.name,
-      errorMessage: gaxiosErr?.message,
-      httpStatus: gaxiosErr?.response?.status,
-      responseData: gaxiosErr?.response?.data,
+      errorName: gaxiosErr?.name ?? null,
+      httpStatus: gaxiosErr?.response?.status ?? null,
     });
 
-    console.error("[Google OAuth Callback Error]", gaxiosErr?.message || err);
+    console.error("[Google OAuth Callback Error] callback failed");
     const errorUrl = new URL("/login", req.url);
 
     if (err instanceof Error && err.message === "UNVERIFIED_GOOGLE_EMAIL") {

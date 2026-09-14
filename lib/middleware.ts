@@ -95,7 +95,10 @@ export function withAdminAuth(handler: InnerHandler): ExportedHandler {
 export function withInternalAuth(handler: InnerHandler): ExportedHandler {
   return (async (req: NextRequest, ctx: unknown) => {
     const secret = req.headers.get("x-internal-secret");
-    const expected = process.env.INTERNAL_SECRET;
+    // INTERNAL_WORKER_SECRET is the deployment-facing name. Keep the legacy
+    // name as a temporary compatibility fallback for existing local setups.
+    const expected =
+      process.env.INTERNAL_WORKER_SECRET ?? process.env.INTERNAL_SECRET;
 
     if (!expected || !secret || secret !== expected) {
       return unauthorized("Internal access only");

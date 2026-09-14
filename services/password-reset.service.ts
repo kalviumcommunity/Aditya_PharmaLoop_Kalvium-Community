@@ -123,14 +123,26 @@ export const passwordResetService = {
       throw new Error("OTP_EXPIRED");
     }
 
-    if (record.attempts >= record.maxAttempts) {
+    // Claim the attempt in the database before checking it. This prevents
+    // concurrent requests from exceeding the configured attempt limit.
+    const claimed = await verificationRepository.claimAttemptAtomic(record.id);
+    if (!claimed) {
+      const fresh = await verificationRepository.findByEmail(
+        normalizedEmail,
+        "PASSWORD_RESET",
+      );
+      if (!fresh || fresh.isConsumed) {
+        throw new Error("INVALID_OR_CONSUMED_OTP");
+      }
+      if (fresh.expiresAt < new Date()) {
+        throw new Error("OTP_EXPIRED");
+      }
       throw new Error("MAX_ATTEMPTS_EXCEEDED");
     }
 
-    const isValid = verifyOtpHash(otp.trim(), record.otpHash);
+    const isValid = verifyOtpHash(otp.trim(), claimed.otpHash);
     if (!isValid) {
-      const updated = await verificationRepository.incrementAttempts(record.id);
-      const remaining = record.maxAttempts - updated.attempts;
+      const remaining = claimed.maxAttempts - claimed.attempts;
       if (remaining <= 0) {
         throw new Error("MAX_ATTEMPTS_EXCEEDED");
       }
@@ -142,8 +154,16 @@ export const passwordResetService = {
     const resetTokenHash = hashResetToken(resetToken);
     const resetTokenExpiry = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000);
 
-    // Consume the OTP and store hashed reset token
-    await verificationRepository.storeResetToken(record.id, resetTokenHash, resetTokenExpiry);
+    // Atomically consume the OTP and save its reset authorization. A second
+    // concurrent valid submission must not mint another reset token.
+    const consumed = await verificationRepository.storeResetTokenIfActive(
+      record.id,
+      resetTokenHash,
+      resetTokenExpiry,
+    );
+    if (!consumed) {
+      throw new Error("INVALID_OR_CONSUMED_OTP");
+    }
 
     return {
       success: true,
@@ -161,36 +181,52 @@ export const passwordResetService = {
     newPassword: string
   ): Promise<{ success: true; message: string }> {
     const tokenHash = hashResetToken(resetToken.trim());
-    const record = await verificationRepository.findByResetTokenHash(tokenHash);
-
-    if (!record) {
-      throw new Error("INVALID_OR_EXPIRED_RESET_TOKEN");
-    }
-
-    const user = await userRepository.findByEmail(record.email);
-    if (!user) {
-      throw new Error("USER_NOT_FOUND");
-    }
-
     // Hash new password using bcrypt (12 rounds)
     const newPasswordHash = await bcrypt.hash(newPassword, 12);
 
-    // Atomic transaction: update password + consume/clear reset token
-    await prisma.$transaction(async (tx) => {
-      await tx.user.update({
-        where: { id: user.id },
-        data: { password: newPasswordHash },
+    // Atomically claim the reset token, then update its owner. Claiming first
+    // makes the authorization single-use even under simultaneous requests.
+    const record = await prisma.$transaction(async (tx) => {
+      const resetRecord = await tx.emailVerification.findFirst({
+        where: {
+          resetTokenHash: tokenHash,
+          type: "PASSWORD_RESET",
+          resetTokenExpiry: { gt: new Date() },
+        },
       });
+      if (!resetRecord) return null;
 
-      await tx.emailVerification.update({
-        where: { id: record.id },
+      const claimed = await tx.emailVerification.updateMany({
+        where: {
+          id: resetRecord.id,
+          resetTokenHash: tokenHash,
+          type: "PASSWORD_RESET",
+          resetTokenExpiry: { gt: new Date() },
+        },
         data: {
           resetTokenHash: null,
           resetTokenExpiry: null,
           isConsumed: true,
         },
       });
+      if (claimed.count !== 1) return null;
+
+      const user = await tx.user.findUnique({
+        where: { email: resetRecord.email },
+      });
+      if (!user) throw new Error("USER_NOT_FOUND");
+
+      await tx.user.update({
+        where: { id: user.id },
+        data: { password: newPasswordHash },
+      });
+
+      return resetRecord;
     });
+
+    if (!record) {
+      throw new Error("INVALID_OR_EXPIRED_RESET_TOKEN");
+    }
 
     return {
       success: true,

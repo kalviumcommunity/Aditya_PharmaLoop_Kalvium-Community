@@ -60,6 +60,11 @@ RUN npx prisma generate \
 # No runtime secrets are needed for the build itself.
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
+# Next.js evaluates route modules while collecting build metadata. Prisma's
+# adapter is constructed during that phase, but never connects until a query.
+# Use a deliberately non-routable, non-secret build placeholder; Render's
+# runtime DATABASE_URL overrides it and is never baked into the image.
+ENV DATABASE_URL=postgresql://build:build@127.0.0.1:5432/pharmaloop_build
 
 RUN npm run build
 

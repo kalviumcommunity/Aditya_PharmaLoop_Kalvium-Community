@@ -171,6 +171,31 @@ export const verificationRepository = {
     });
   },
 
+  /**
+   * Consumes a valid OTP only once while storing a password-reset token.
+   * The conditional update closes the race between simultaneous valid OTP
+   * submissions.
+   */
+  async storeResetTokenIfActive(
+    id: string,
+    resetTokenHash: string,
+    resetTokenExpiry: Date,
+  ): Promise<boolean> {
+    const updated = await prisma.emailVerification.updateMany({
+      where: {
+        id,
+        isConsumed: false,
+        expiresAt: { gt: new Date() },
+      },
+      data: {
+        isConsumed: true,
+        resetTokenHash,
+        resetTokenExpiry,
+      },
+    });
+    return updated.count === 1;
+  },
+
   async findByResetTokenHash(resetTokenHash: string) {
     return prisma.emailVerification.findFirst({
       where: {

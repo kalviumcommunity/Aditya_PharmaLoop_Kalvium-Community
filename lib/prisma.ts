@@ -24,13 +24,20 @@ function normalizeConnectionString(raw: string | undefined): string | undefined 
 }
 
 function createPrismaClient() {
-  const connectionString =
-    normalizeConnectionString(process.env.DATABASE_URL) ??
-    "postgresql://placeholder:placeholder@localhost:5432/placeholder";
+  const connectionString = normalizeConnectionString(process.env.DATABASE_URL);
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is required to initialize Prisma");
+  }
+
   const poolMax = Number(process.env.PG_POOL_MAX ?? "10");
   const pool = new Pool({
     connectionString,
     max: Number.isFinite(poolMax) && poolMax > 0 ? poolMax : 10,
+    // Supabase connections must not silently fall back to plaintext in production.
+    ssl:
+      process.env.NODE_ENV === "production"
+        ? { rejectUnauthorized: true }
+        : undefined,
   });
   const adapter = new PrismaPg(pool);
   return new PrismaClient({ adapter });

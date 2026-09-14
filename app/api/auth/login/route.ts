@@ -39,7 +39,9 @@ export async function POST(req: NextRequest) {
     // Record success to clear failure counter
     loginRateLimiter.onSuccessfulLogin(clientIp, data.email);
 
-    const response = ok({ user, token }, "Login successful");
+    // The session is intentionally cookie-only. Returning the JWT here would
+    // let browser JavaScript bypass the HttpOnly boundary.
+    const response = ok({ user }, "Login successful");
 
     response.headers.set(
       "Set-Cookie",
