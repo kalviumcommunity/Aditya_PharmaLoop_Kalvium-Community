@@ -29,6 +29,18 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
       if (err.message === "PRODUCT_NOT_FOUND") {
         return badRequest("One or more products were not found or inactive");
       }
+      if (err.message === "CART_EMPTY") {
+        return badRequest("Cannot create subscription from an empty cart");
+      }
+      if (err.message === "PAST_DATE_NOT_ALLOWED") {
+        return badRequest("PAST_DATE_NOT_ALLOWED");
+      }
+      if (err.message === "DATE_TOO_FAR_IN_FUTURE") {
+        return badRequest("DATE_TOO_FAR_IN_FUTURE");
+      }
+      if (err.message === "INVALID_DATE") {
+        return badRequest("INVALID_DATE");
+      }
     }
     console.error("[POST /api/subscriptions]", err);
     return serverError();

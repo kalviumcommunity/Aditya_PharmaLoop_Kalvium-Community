@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/prisma";
-import { PaymentStatus, PaymentAttemptStatus, Prisma } from "@/app/generated/prisma";
+import {
+  PaymentStatus,
+  PaymentAttemptStatus,
+  PaymentMethod,
+  Prisma,
+} from "@/app/generated/prisma";
 
 const PAYMENT_INCLUDE = {
   attempts: {
@@ -16,10 +21,33 @@ export const paymentRepository = {
     });
   },
 
+  async upsert(
+    orderId: string,
+    amount: Prisma.Decimal,
+    paymentMethod: PaymentMethod = "ONLINE",
+  ) {
+    return prisma.payment.upsert({
+      where: { orderId },
+      create: { orderId, amount, paymentMethod },
+      update: { paymentMethod },
+      include: PAYMENT_INCLUDE,
+    });
+  },
+
   async findByOrder(orderId: string) {
     return prisma.payment.findUnique({
       where: { orderId },
       include: PAYMENT_INCLUDE,
+    });
+  },
+
+  async findByUser(userId: string) {
+    return prisma.payment.findMany({
+      where: { order: { userId } },
+      include: {
+        order: { select: { id: true, createdAt: true, status: true } },
+      },
+      orderBy: { createdAt: "desc" },
     });
   },
 
@@ -31,10 +59,22 @@ export const paymentRepository = {
     });
   },
 
+  async updateProviderOrder(
+    id: string,
+    providerOrderId: string,
+    currency: string,
+  ) {
+    return prisma.payment.update({
+      where: { id },
+      data: { provider: "RAZORPAY", providerOrderId, currency },
+      include: PAYMENT_INCLUDE,
+    });
+  },
+
   async createAttempt(
     paymentId: string,
     status: PaymentAttemptStatus,
-    failureReason?: string
+    failureReason?: string,
   ) {
     return prisma.paymentAttempt.create({
       data: { paymentId, status, failureReason },

@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
 import { verifyToken, AuthPayload } from "./auth";
-import { unauthorized } from "./response";
+import { unauthorized, forbidden } from "./response";
 
 export interface AuthenticatedRequest extends NextRequest {
   auth: AuthPayload;
 }
 
-type InnerHandler = (req: AuthenticatedRequest, ctx: unknown) => Promise<Response>;
+type InnerHandler = (
+  req: AuthenticatedRequest,
+  ctx: unknown,
+) => Promise<Response>;
 type ExportedHandler = (req: NextRequest, ctx: unknown) => Promise<Response>;
 
 /**
@@ -49,6 +52,43 @@ export function withAuth(handler: InnerHandler): ExportedHandler {
 }
 
 /**
+ * Higher-order function that wraps a Route Handler with Admin JWT authentication.
+ * Requires a valid token AND role === "ADMIN".
+ * Returns 401 if unauthenticated, 403 if authenticated but not an ADMIN.
+ */
+export function withAdminAuth(handler: InnerHandler): ExportedHandler {
+  return (async (req: NextRequest, ctx: unknown) => {
+    let token: string | null = null;
+
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      token = authHeader.slice(7);
+    }
+
+    if (!token) {
+      token = req.cookies.get("auth_token")?.value ?? null;
+    }
+
+    if (!token) {
+      return unauthorized("Authentication required");
+    }
+
+    const payload = verifyToken(token);
+    if (!payload) {
+      return unauthorized("Invalid or expired token");
+    }
+
+    if (payload.role !== "ADMIN") {
+      return forbidden("Admin authorization required");
+    }
+
+    const authedReq = req as AuthenticatedRequest;
+    authedReq.auth = payload;
+    return handler(authedReq, ctx);
+  }) as ExportedHandler;
+}
+
+/**
  * Guard for internal endpoints — checks for a shared secret in the
  * `x-internal-secret` header. Never expose internal routes to users.
  */
@@ -57,7 +97,7 @@ export function withInternalAuth(handler: InnerHandler): ExportedHandler {
     const secret = req.headers.get("x-internal-secret");
     const expected = process.env.INTERNAL_SECRET;
 
-    if (!expected || secret !== expected) {
+    if (!expected || !secret || secret !== expected) {
       return unauthorized("Internal access only");
     }
 

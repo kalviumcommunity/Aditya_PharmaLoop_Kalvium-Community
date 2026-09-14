@@ -10,6 +10,7 @@ PharmaLoop is a medicine management platform that helps users discover medicines
 **Sprint 2 — Development 🚧**
 
 ### Completed
+
 - [x] PRD & User Stories
 - [x] UX Flow
 - [x] UI Wireframes
@@ -19,6 +20,7 @@ PharmaLoop is a medicine management platform that helps users discover medicines
 - [x] Neon PostgreSQL Setup
 
 ### In Progress
+
 - [ ] Database Schema
 - [ ] API Contracts
 - [ ] Authentication
@@ -57,9 +59,21 @@ ORDER CREATED    RETRYING
               ┌────┴────┐
               ↓         ↓
            SUCCESS   FINAL FAILURE
+```
 ````
 
 Every important process must end in a clear state and notify the user of the outcome.
+
+One-time payments use Razorpay Test Mode. The server creates the Razorpay order from the trusted PharmaLoop order total, and only a server-verified Razorpay signature can confirm the order.
+
+Required environment variables:
+
+```env
+RAZORPAY_KEY_ID="rzp_test_..."
+RAZORPAY_KEY_SECRET="..."
+```
+
+Scheduled refill workers do not open interactive Razorpay Checkout. A due refill remains pending until the customer completes an authenticated payment retry; no background charge is claimed.
 
 ---
 
@@ -214,6 +228,8 @@ Create `.env`:
 
 ```env
 DATABASE_URL="your-neon-postgresql-connection-string"
+RAZORPAY_KEY_ID="rzp_test_..."
+RAZORPAY_KEY_SECRET="..."
 ```
 
 Never commit `.env`.
@@ -285,35 +301,35 @@ feature/notifications
 
 **In Progress 🚧**
 
-* Database
-* API Contract
-* Architecture
-* Authentication
+- Database
+- API Contract
+- Architecture
+- Authentication
 
 ### Sprint 3 — Backend
 
-* Medicine APIs
-* Subscription APIs
-* Order APIs
-* Payment System
-* Notification System
+- Medicine APIs
+- Subscription APIs
+- Order APIs
+- Payment System
+- Notification System
 
 ### Sprint 4 — Frontend
 
-* Dashboard
-* Medicine Discovery
-* Cart
-* Subscriptions
-* Payments
-* Notifications
+- Dashboard
+- Medicine Discovery
+- Cart
+- Subscriptions
+- Payments
+- Notifications
 
 ### Sprint 5 — Testing & Deployment
 
-* Integration Testing
-* Error Handling
-* Security
-* Performance
-* Deployment
+- Integration Testing
+- Error Handling
+- Security
+- Performance
+- Deployment
 
 ---
 
@@ -321,21 +337,20 @@ feature/notifications
 
 **PharmaLoop Team**
 
-* Aditya — Project Admin / Development
-* Aman — Development
-* Anshika Bagga — Designer / Frontend Development
+- Aditya — Project Admin / Development
+- Aman — Development
+- Anshika Bagga — Designer / Frontend Development
 
 ## 📄 Documentation
 
-* Product Requirements Document
-* UX Flow
-* UI Wireframes
-* Page Descriptions
-* API Contract
-* System Design
-* Database Design
+- Product Requirements Document
+- UX Flow
+- UI Wireframes
+- Page Descriptions
+- API Contract
+- System Design
+- Database Design
 
 ---
 
 > **PharmaLoop: Making medicine management simple, reliable, and automatic.**
-

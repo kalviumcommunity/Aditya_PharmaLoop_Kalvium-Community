@@ -2,7 +2,7 @@ import { withAuth, AuthenticatedRequest } from "@/lib/middleware";
 import { cartService } from "@/services/cart.service";
 import { validateBody } from "@/lib/validate";
 import { addCartItemSchema } from "@/types";
-import { created, notFound, serverError } from "@/lib/response";
+import { created, notFound, badRequest, serverError } from "@/lib/response";
 
 export const POST = withAuth(async (req: AuthenticatedRequest) => {
   const { data, error } = await validateBody(req, addCartItemSchema);
@@ -14,6 +14,9 @@ export const POST = withAuth(async (req: AuthenticatedRequest) => {
   } catch (err: unknown) {
     if (err instanceof Error && err.message === "PRODUCT_NOT_FOUND") {
       return notFound("Product not found");
+    }
+    if (err instanceof Error && err.message.startsWith("INSUFFICIENT_STOCK")) {
+      return badRequest(err.message.replace("INSUFFICIENT_STOCK: ", ""));
     }
     console.error("[POST /api/cart/items]", err);
     return serverError();

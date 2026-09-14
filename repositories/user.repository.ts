@@ -5,8 +5,10 @@ export interface CreateUserData {
   name: string;
   email: string;
   phone?: string;
-  password: string;
+  password?: string | null;
+  googleId?: string | null;
   role?: UserRole;
+  emailVerifiedAt?: Date | null;
 }
 
 export const userRepository = {
@@ -18,7 +20,9 @@ export const userRepository = {
         name: true,
         email: true,
         phone: true,
+        googleId: true,
         role: true,
+        emailVerifiedAt: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -29,21 +33,39 @@ export const userRepository = {
     return prisma.user.findUnique({ where: { email } });
   },
 
+  async findByGoogleId(googleId: string) {
+    return prisma.user.findUnique({ where: { googleId } });
+  },
+
+  async linkGoogleId(userId: string, googleId: string, markVerified: boolean = false) {
+    return prisma.user.update({
+      where: { id: userId },
+      data: {
+        googleId,
+        ...(markVerified ? { emailVerifiedAt: new Date() } : {}),
+      },
+    });
+  },
+
   async create(data: CreateUserData) {
     return prisma.user.create({
       data: {
         name: data.name,
         email: data.email,
         phone: data.phone,
-        password: data.password,
+        password: data.password ?? null,
+        googleId: data.googleId ?? null,
         role: data.role ?? "CUSTOMER",
+        emailVerifiedAt: data.emailVerifiedAt,
       },
       select: {
         id: true,
         name: true,
         email: true,
         phone: true,
+        googleId: true,
         role: true,
+        emailVerifiedAt: true,
         createdAt: true,
       },
     });

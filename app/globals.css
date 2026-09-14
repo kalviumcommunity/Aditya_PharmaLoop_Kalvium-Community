@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fbfdfc;
+  --foreground: #0f172a;
+  --brand-green: #1b5e3b;
+  --brand-green-hover: #154c30;
+  --brand-green-light: #ecf8f1;
+  --brand-green-border: rgba(27, 94, 59, 0.18);
+  --glass-bg: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(226, 232, 240, 0.75);
+  --glass-shadow: 0 4px 20px -2px rgba(27, 94, 59, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
+  --glass-shadow-hover: 0 12px 30px -4px rgba(27, 94, 59, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.03);
 }
 
 @theme inline {
@@ -12,15 +20,518 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
+}
+
+[id] {
+  scroll-margin-top: 5rem;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* ==========================================================================
+   GLASSMORPHISM & DEPTH SURFACES (with graceful fallback)
+   ========================================================================== */
+
+.glass-card {
+  background-color: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.85);
+  box-shadow: var(--glass-shadow);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass-card {
+    background-color: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+  }
+}
+
+.glass-card-interactive {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--glass-shadow-hover);
+  border-color: rgba(27, 94, 59, 0.25);
+}
+
+.glass-nav {
+  background-color: rgba(255, 255, 255, 0.96);
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass-nav {
+    background-color: rgba(255, 255, 255, 0.84);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(226, 232, 240, 0.65);
+  }
+}
+
+.glass-panel {
+  background-color: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass-panel {
+    background-color: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(226, 232, 240, 0.75);
+  }
+}
+
+/* ==========================================================================
+   BUTTON & INTERACTION SYSTEM
+   ========================================================================== */
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background-color: var(--brand-green);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 0.625rem 1.125rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.btn-primary:hover {
+  background-color: var(--brand-green-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -1px rgba(27, 94, 59, 0.25);
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.btn-primary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--brand-green);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background-color: rgba(255, 255, 255, 0.9);
+  color: #334155;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  font-weight: 600;
+  padding: 0.625rem 1.125rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+}
+
+.btn-secondary:hover {
+  background-color: #f8fafc;
+  color: #0f172a;
+  border-color: #cbd5e1;
+  transform: translateY(-1px);
+}
+
+.btn-secondary:active {
+  transform: scale(0.98);
+}
+
+.btn-secondary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--brand-green);
+}
+
+/* ==========================================================================
+   INPUT POLISH
+   ========================================================================== */
+
+.input-polish {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background-color: #ffffff;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.875rem;
+  color: #0f172a;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.input-polish:hover {
+  border-color: #94a3b8;
+}
+
+.input-polish:focus {
+  outline: none;
+  border-color: var(--brand-green);
+  box-shadow: 0 0 0 3px rgba(27, 94, 59, 0.12);
+}
+
+/* ==========================================================================
+   MODAL ENTRANCE ANIMATION
+   ========================================================================== */
+
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-animate-in {
+  animation: modalScaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* ==========================================================================
+   HERO STAGGER ENTRANCE (Welcome Page)
+   ========================================================================== */
+
+@keyframes heroFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-enter-0 {
+  animation: heroFadeUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) 0ms both;
+}
+
+.hero-enter-1 {
+  animation: heroFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 100ms both;
+}
+
+.hero-enter-2 {
+  animation: heroFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 200ms both;
+}
+
+.hero-enter-3 {
+  animation: heroFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 300ms both;
+}
+
+.hero-enter-4 {
+  animation: heroFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 400ms both;
+}
+
+.hero-enter-5 {
+  animation: heroFadeUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 500ms both;
+}
+
+/* ==========================================================================
+   AMBIENT FLOATING MEDICINE CARDS (Slow, subtle, alternating phases)
+   ========================================================================== */
+
+@keyframes floatA {
+  0% {
+    transform: translateY(0px);
+  }
+  100% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes floatB {
+  0% {
+    transform: translateY(0px);
+  }
+  100% {
+    transform: translateY(6px);
+  }
+}
+
+@keyframes floatC {
+  0% {
+    transform: translateY(0px);
+  }
+  100% {
+    transform: translateY(-5px);
+  }
+}
+
+.animate-float-a {
+  animation: floatA 5.2s ease-in-out infinite alternate;
+}
+
+.animate-float-b {
+  animation: floatB 6.6s ease-in-out infinite alternate;
+}
+
+.animate-float-c {
+  animation: floatC 5.8s ease-in-out 1s infinite alternate;
+}
+
+/* Pause float on hover so user can inspect without motion */
+.animate-float-a:hover,
+.animate-float-b:hover,
+.animate-float-c:hover {
+  animation-play-state: paused;
+}
+
+/* ==========================================================================
+   UNIVERSAL PAGE ENTRANCE TRANSITION
+   ========================================================================== */
+
+@keyframes pageEntrance {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-entrance {
+  animation: pageEntrance 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ==========================================================================
+   SCROLL REVEAL UTILITIES (Viewport intersection)
+   ========================================================================== */
+
+.reveal-init {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.reveal-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ==========================================================================
+   NAVBAR ENTRANCE
+   ========================================================================== */
+
+@keyframes navSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.nav-entrance {
+  animation: navSlideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ==========================================================================
+   AUTHENTICATED LIVING MEDICAL BACKGROUND
+   ========================================================================== */
+
+.medical-glass-bubble {
+  border-radius: 9999px;
+  position: relative;
+  background: radial-gradient(
+    circle at 35% 28%,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(255, 255, 255, 0.32) 18%,
+    rgba(230, 248, 238, 0.12) 42%,
+    rgba(182, 228, 206, 0.22) 75%,
+    rgba(155, 215, 188, 0.34) 100%
+  );
+  box-shadow:
+    inset 0 1.5px 3px rgba(255, 255, 255, 0.9),
+    inset 0 -2px 6px rgba(150, 210, 182, 0.28),
+    0 8px 24px -4px rgba(27, 94, 59, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  will-change: transform;
+}
+
+@keyframes waveDriftLower {
+  0% {
+    transform: translate3d(-14px, 4px, 0);
+  }
+  50% {
+    transform: translate3d(8px, -6px, 0);
+  }
+  100% {
+    transform: translate3d(20px, -4px, 0);
+  }
+}
+
+.animated-bg-wave-lower {
+  animation: waveDriftLower 28s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+  will-change: transform;
+}
+
+@keyframes waveDriftUpper {
+  0% {
+    transform: translate3d(10px, -4px, 0);
+  }
+  50% {
+    transform: translate3d(-4px, 6px, 0);
+  }
+  100% {
+    transform: translate3d(-18px, 4px, 0);
+  }
+}
+
+.animated-bg-wave-upper {
+  animation: waveDriftUpper 34s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+  will-change: transform;
+}
+
+@keyframes bubbleFloat1 {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-8px, -18px, 0);
+  }
+}
+
+.bubble-float-1 {
+  animation: bubbleFloat1 18s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+  will-change: transform;
+}
+
+@keyframes bubbleFloat2 {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(8px, -14px, 0);
+  }
+}
+
+.bubble-float-2 {
+  animation: bubbleFloat2 14s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+  animation-delay: -3s;
+  will-change: transform;
+}
+
+@keyframes bubbleFloat3 {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-10px, 12px, 0);
+  }
+}
+
+.bubble-float-3 {
+  animation: bubbleFloat3 16s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+  animation-delay: -6s;
+  will-change: transform;
+}
+
+@keyframes bubbleFloat4 {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-6px, -10px, 0);
+  }
+}
+
+.bubble-float-4 {
+  animation: bubbleFloat4 12s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite alternate;
+  animation-delay: -2s;
+  will-change: transform;
+}
+
+@keyframes softGleamPulse {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.15);
+  }
+}
+
+.animated-soft-gleam {
+  animation: softGleamPulse 8s ease-in-out infinite;
+  will-change: opacity, transform;
+}
+
+/* ==========================================================================
+   ACCESSIBILITY: PREFERS-REDUCED-MOTION
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+    transform: none !important;
+  }
+
+  html {
+    scroll-behavior: auto !important;
+  }
+
+  .animate-float-a,
+  .animate-float-b,
+  .animate-float-c,
+  .hero-enter-0,
+  .hero-enter-1,
+  .hero-enter-2,
+  .hero-enter-3,
+  .hero-enter-4,
+  .hero-enter-5,
+  .page-entrance,
+  .modal-animate-in,
+  .nav-entrance,
+  .animated-bg-wave-lower,
+  .animated-bg-wave-upper,
+  .bubble-float-1,
+  .bubble-float-2,
+  .bubble-float-3,
+  .bubble-float-4,
+  .animated-soft-gleam,
+  .medical-glass-bubble {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .reveal-init {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
 }

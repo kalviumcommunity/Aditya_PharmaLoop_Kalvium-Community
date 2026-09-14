@@ -1,0 +1,3 @@
+[2026-09-14T05:21:49.367Z] Callback Invoked {"hasCode":true,"hasState":true,"oauthError":null}
+[2026-09-14T05:21:49.387Z] Exchanging authorization code... 
+[2026-09-14T05:21:53.926Z] Callback Exception Caught {"errorName":"Error","errorMessage":"invalid_grant","httpStatus":400,"responseData":{"error":"invalid_grant","error_description":"Malformed auth code."}}

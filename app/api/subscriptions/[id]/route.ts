@@ -38,6 +38,9 @@ export const PATCH = withAuth(
         if (err.message === "FORBIDDEN") return forbidden("Access denied");
         if (err.message === "INVALID_ADDRESS") return badRequest("Invalid or unauthorized delivery address");
         if (err.message === "INVALID_STATUS") return badRequest("Action not allowed for current subscription status");
+        if (err.message === "INVALID_DATE") return badRequest("INVALID_DATE");
+        if (err.message === "PAST_DATE_NOT_ALLOWED") return badRequest("PAST_DATE_NOT_ALLOWED");
+        if (err.message === "DATE_TOO_FAR_IN_FUTURE") return badRequest("DATE_TOO_FAR_IN_FUTURE");
       }
       console.error("[PATCH /api/subscriptions/[id]]", err);
       return serverError();

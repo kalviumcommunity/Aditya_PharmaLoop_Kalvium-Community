@@ -1,6 +1,7 @@
 import { subscriptionRepository } from "@/repositories/subscription.repository";
 import { productRepository } from "@/repositories/product.repository";
 import { addressRepository } from "@/repositories/address.repository";
+import { cartRepository } from "@/repositories/cart.repository";
 import { notificationService } from "./notification.service";
 import { CreateSubscriptionInput, PatchSubscriptionInput } from "@/types";
 import { SubscriptionFrequency } from "@/app/generated/prisma";
@@ -42,21 +43,59 @@ export const subscriptionService = {
       throw new Error("PRODUCT_NOT_FOUND");
     }
 
-    const subscription = await subscriptionRepository.create({
-      userId,
-      addressId: input.addressId,
-      frequency: input.frequency,
-      nextRefillDate: new Date(input.nextRefillDate),
-      refillTime: input.refillTime,
-      items: input.items,
-    });
+    // Validate nextRefillDate bounds
+    const parsedDate = new Date(input.nextRefillDate);
+    if (isNaN(parsedDate.getTime())) {
+      throw new Error("INVALID_DATE");
+    }
+    const minDate = new Date();
+    minDate.setHours(0, 0, 0, 0);
+    if (parsedDate < minDate) {
+      throw new Error("PAST_DATE_NOT_ALLOWED");
+    }
+    const maxDate = new Date();
+    maxDate.setFullYear(maxDate.getFullYear() + 1);
+    if (parsedDate > maxDate) {
+      throw new Error("DATE_TOO_FAR_IN_FUTURE");
+    }
+
+    // Combine date with effective refillTime
+    if (input.refillTime && /^\d{2}:\d{2}$/.test(input.refillTime)) {
+      const [hours, minutes] = input.refillTime.split(":").map(Number);
+      parsedDate.setHours(hours, minutes, 0, 0);
+    }
+    if (parsedDate < new Date()) {
+      throw new Error("PAST_DATE_NOT_ALLOWED");
+    }
+
+    // If requested, verify cart and clear atomically with subscription creation
+    let clearCartId: string | undefined;
+    if (input.clearCart) {
+      const cart = await cartRepository.findByUser(userId);
+      if (!cart || cart.items.length === 0) {
+        throw new Error("CART_EMPTY");
+      }
+      clearCartId = cart.id;
+    }
+
+    const subscription = await subscriptionRepository.create(
+      {
+        userId,
+        addressId: input.addressId,
+        frequency: input.frequency,
+        nextRefillDate: parsedDate,
+        refillTime: input.refillTime,
+        items: input.items,
+      },
+      clearCartId
+    );
 
     // Notify user
     await notificationService.send({
       userId,
       type: "SUBSCRIPTION",
       title: "Subscription Created",
-      message: `Your ${input.frequency.toLowerCase()} subscription has been set up. Next refill on ${new Date(input.nextRefillDate).toLocaleDateString()}.`,
+      message: `Your ${input.frequency.toLowerCase()} subscription has been set up. Next refill on ${parsedDate.toLocaleDateString()}.`,
     });
 
     return subscription;
@@ -82,103 +121,161 @@ export const subscriptionService = {
     if (!sub) throw new Error("NOT_FOUND");
     if (sub.userId !== userId) throw new Error("FORBIDDEN");
 
-    const now = new Date();
-    let addressToUpdate: string | undefined = undefined;
+    const isScheduleUpdate =
+      input.frequency !== undefined ||
+      input.nextRefillDate !== undefined ||
+      input.refillTime !== undefined;
 
+    // Disallow rescheduling cancelled subscriptions
+    if (isScheduleUpdate && sub.status === "CANCELLED") {
+      throw new Error("INVALID_STATUS");
+    }
+
+    const now = new Date();
+    const updateData: Parameters<typeof subscriptionRepository.update>[1] = {};
+
+    // 1. Address update & authorization
     if (input.addressId) {
       const address = await addressRepository.findById(input.addressId);
       if (!address || address.userId !== userId) {
         throw new Error("INVALID_ADDRESS");
       }
-      addressToUpdate = input.addressId;
+      updateData.addressId = input.addressId;
     }
 
+    // 2. Frequency update
+    if (input.frequency) {
+      updateData.frequency = input.frequency;
+    }
+
+    // 3. Refill time update
+    if (input.refillTime) {
+      updateData.refillTime = input.refillTime;
+    }
+
+    // 4. Next refill date validation & combination with time
+    if (input.nextRefillDate) {
+      const parsedDate = new Date(input.nextRefillDate);
+      if (isNaN(parsedDate.getTime())) {
+        throw new Error("INVALID_DATE");
+      }
+      const minDate = new Date();
+      minDate.setHours(0, 0, 0, 0);
+      if (parsedDate < minDate) {
+        throw new Error("PAST_DATE_NOT_ALLOWED");
+      }
+      const maxDate = new Date();
+      maxDate.setFullYear(maxDate.getFullYear() + 1);
+      if (parsedDate > maxDate) {
+        throw new Error("DATE_TOO_FAR_IN_FUTURE");
+      }
+
+      // Combine calendar date with effective refill time
+      const effectiveTime = input.refillTime ?? sub.refillTime;
+      if (effectiveTime && /^\d{2}:\d{2}$/.test(effectiveTime)) {
+        const [hours, minutes] = effectiveTime.split(":").map(Number);
+        parsedDate.setHours(hours, minutes, 0, 0);
+      }
+      updateData.nextRefillDate = parsedDate;
+    } else if (input.refillTime) {
+      // Time changed without date: preserve calendar date of existing nextRefillDate
+      const existingDate = new Date(sub.nextRefillDate);
+      const [hours, minutes] = input.refillTime.split(":").map(Number);
+      existingDate.setHours(hours, minutes, 0, 0);
+      updateData.nextRefillDate = existingDate;
+    }
+
+    // 5. Lifecycle actions
     if (input.action) {
       switch (input.action) {
         case "pause": {
           if (sub.status !== "ACTIVE") throw new Error("INVALID_STATUS");
-          const updated = await subscriptionRepository.update(subscriptionId, {
-            status: "PAUSED",
-            pausedAt: now,
-            ...(addressToUpdate ? { addressId: addressToUpdate } : {}),
-          });
-          await notificationService.send({
-            userId,
-            type: "SUBSCRIPTION",
-            title: "Subscription Paused",
-            message: "Your subscription has been paused. No refills will be generated until you resume.",
-          });
-          return updated;
+          updateData.status = "PAUSED";
+          updateData.pausedAt = now;
+          break;
         }
 
         case "resume": {
           if (sub.status !== "PAUSED") throw new Error("INVALID_STATUS");
-          // Recalculate next refill from now
-          const nextRefillDate = computeNextRefillDate(now, sub.frequency);
-          const updated = await subscriptionRepository.update(subscriptionId, {
-            status: "ACTIVE",
-            pausedAt: null,
-            nextRefillDate,
-            ...(addressToUpdate ? { addressId: addressToUpdate } : {}),
-          });
-          await notificationService.send({
-            userId,
-            type: "SUBSCRIPTION",
-            title: "Subscription Resumed",
-            message: `Your subscription is active again. Next refill on ${nextRefillDate.toLocaleDateString()}.`,
-          });
-          return updated;
+          updateData.status = "ACTIVE";
+          updateData.pausedAt = null;
+          if (!updateData.nextRefillDate) {
+            updateData.nextRefillDate = computeNextRefillDate(
+              now,
+              updateData.frequency ?? sub.frequency
+            );
+          }
+          break;
         }
 
         case "cancel": {
           if (sub.status === "CANCELLED") throw new Error("INVALID_STATUS");
-          const updated = await subscriptionRepository.update(subscriptionId, {
-            status: "CANCELLED",
-            cancelledAt: now,
-            ...(addressToUpdate ? { addressId: addressToUpdate } : {}),
-          });
-          await notificationService.send({
-            userId,
-            type: "SUBSCRIPTION",
-            title: "Subscription Cancelled",
-            message: "Your subscription has been cancelled. No future refills will be generated.",
-          });
-          return updated;
+          updateData.status = "CANCELLED";
+          updateData.cancelledAt = now;
+          break;
         }
 
         case "skip": {
           if (sub.status !== "ACTIVE") throw new Error("INVALID_STATUS");
-          // Advance the next refill date by one period
-          const nextRefillDate = computeNextRefillDate(sub.nextRefillDate, sub.frequency);
-          const updated = await subscriptionRepository.update(subscriptionId, {
-            nextRefillDate,
-            ...(addressToUpdate ? { addressId: addressToUpdate } : {}),
-          });
-          await notificationService.send({
-            userId,
-            type: "SUBSCRIPTION",
-            title: "Refill Skipped",
-            message: `The next refill has been skipped. Next refill on ${nextRefillDate.toLocaleDateString()}.`,
-          });
-          return updated;
+          const baseDate = updateData.nextRefillDate ?? sub.nextRefillDate;
+          const freq = updateData.frequency ?? sub.frequency;
+          updateData.nextRefillDate = computeNextRefillDate(baseDate, freq);
+          break;
         }
       }
     }
 
-    if (addressToUpdate) {
-      const updated = await subscriptionRepository.update(subscriptionId, {
-        addressId: addressToUpdate,
+    // Persist changes to PostgreSQL
+    const updated = await subscriptionRepository.update(subscriptionId, updateData);
+
+    // Send notifications based on the action performed
+    if (input.action) {
+      if (input.action === "pause") {
+        await notificationService.send({
+          userId,
+          type: "SUBSCRIPTION",
+          title: "Subscription Paused",
+          message: "Your subscription has been paused. No refills will be generated until you resume.",
+        });
+      } else if (input.action === "resume") {
+        await notificationService.send({
+          userId,
+          type: "SUBSCRIPTION",
+          title: "Subscription Resumed",
+          message: `Your subscription is active again. Next refill on ${updated.nextRefillDate.toLocaleDateString()}.`,
+        });
+      } else if (input.action === "cancel") {
+        await notificationService.send({
+          userId,
+          type: "SUBSCRIPTION",
+          title: "Subscription Cancelled",
+          message: "Your subscription has been cancelled. No future refills will be generated.",
+        });
+      } else if (input.action === "skip") {
+        await notificationService.send({
+          userId,
+          type: "SUBSCRIPTION",
+          title: "Refill Skipped",
+          message: `The next refill has been skipped. Next refill on ${updated.nextRefillDate.toLocaleDateString()}.`,
+        });
+      }
+    } else if (isScheduleUpdate) {
+      await notificationService.send({
+        userId,
+        type: "SUBSCRIPTION",
+        title: "Subscription Schedule Updated",
+        message: `Your refill schedule has been updated to ${updated.frequency.toLowerCase()}. Next refill on ${updated.nextRefillDate.toLocaleDateString()}.`,
       });
+    } else if (updateData.addressId) {
       await notificationService.send({
         userId,
         type: "SUBSCRIPTION",
         title: "Subscription Delivery Address Updated",
         message: "Your delivery address for this subscription has been updated successfully.",
       });
-      return updated;
     }
 
-    return sub;
+    return updated;
   },
 
   async cancelSubscription(userId: string, subscriptionId: string) {

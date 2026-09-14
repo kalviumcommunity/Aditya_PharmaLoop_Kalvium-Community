@@ -1,0 +1,39 @@
+# ---- Dependencies ----
+node_modules
+
+# ---- Build output ----
+.next
+
+# ---- Prisma generated client (always generate inside the image) ----
+# Host copies can be stale/incomplete; Dockerfile runs `npx prisma generate`.
+app/generated
+
+# ---- Source control ----
+.git
+.gitignore
+
+# ---- Secrets / env files — never enter the image ----
+.env
+.env.*
+!.env.example
+
+# ---- Debug / log files ----
+*.log
+.oauth_debug.log
+
+# ---- Test / coverage ----
+coverage
+
+# ---- IDE / editor / tool configs ----
+.agents
+.claude
+.windsurf
+.vscode
+.idea
+
+# ---- TypeScript incremental cache ----
+tsconfig.tsbuildinfo
+
+# ---- OS artifacts ----
+.DS_Store
+Thumbs.db
