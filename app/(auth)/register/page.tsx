@@ -23,6 +23,9 @@ function getRegisterOAuthError(): string | null {
   if (oauthError === "unverified_google_email") {
     return "Your email address is not verified by Google.";
   }
+  if (oauthError === "google_account_conflict") {
+    return "This Google account could not be linked. Please sign in with your existing account or contact support.";
+  }
   if (oauthError === "invalid_state") {
     return "Your sign-up session expired. Please try again.";
   }

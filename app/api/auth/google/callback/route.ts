@@ -5,7 +5,7 @@ import {
   isGoogleOAuthConfigured,
   STATE_COOKIE_NAME,
 } from "@/lib/google-auth";
-import { authService } from "@/services/auth.service";
+import { authService, GoogleOAuthPrismaError } from "@/services/auth.service";
 
 function logOAuthDiagnostic(
   event: string,
@@ -141,9 +141,15 @@ export async function GET(req: NextRequest) {
       message?: string;
       name?: string;
     };
+    const prismaError = err instanceof GoogleOAuthPrismaError ? err : null;
     logOAuthDiagnostic("Callback Exception Caught", {
       errorName: gaxiosErr?.name ?? null,
       httpStatus: gaxiosErr?.response?.status ?? null,
+      prismaCode: prismaError?.code ?? null,
+      prismaOperation: prismaError?.operation ?? null,
+      prismaModel: prismaError?.modelName ?? null,
+      prismaTarget: prismaError?.target ?? null,
+      prismaColumn: prismaError?.column ?? null,
     });
 
     console.error("[Google OAuth Callback Error] callback failed");
@@ -153,6 +159,8 @@ export async function GET(req: NextRequest) {
       errorUrl.searchParams.set("error", "unverified_google_email");
     } else if (err instanceof Error && err.message === "LOCAL_EMAIL_NOT_VERIFIED") {
       errorUrl.searchParams.set("error", "local_email_not_verified");
+    } else if (prismaError?.code === "P2002") {
+      errorUrl.searchParams.set("error", "google_account_conflict");
     } else {
       errorUrl.searchParams.set("error", "auth_failed");
     }
