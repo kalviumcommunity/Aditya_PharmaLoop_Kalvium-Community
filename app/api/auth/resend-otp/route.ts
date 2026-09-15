@@ -30,27 +30,26 @@ export async function POST(req: NextRequest) {
       if (err.message === "NO_PENDING_REGISTRATION") {
         return badRequest("No pending registration found for this email. Please sign up first.");
       }
-      if (err.message.includes("SMTP_NOT_CONFIGURED") || err.message.includes("PRODUCTION_SMTP_UNCONFIGURED")) {
-        console.error("[POST /api/auth/resend-otp] SMTP unconfigured:", err.message);
+      if (
+        err.message.includes("BREVO_NOT_CONFIGURED") ||
+        err.message.includes("SMTP_NOT_CONFIGURED") ||
+        err.message.includes("PRODUCTION_SMTP_UNCONFIGURED")
+      ) {
+        console.error("[POST /api/auth/resend-otp] Email service unconfigured:", err.message);
         return badRequest(
-          "Email delivery service is not configured. Please set SMTP credentials in .env to receive verification emails."
-        );
-      }
-      if (err.message.includes("EAUTH")) {
-        console.error("[POST /api/auth/resend-otp] SMTP Authentication Failure");
-        return badRequest(
-          "Email delivery failed: SMTP authentication rejected. Please check your SMTP credentials."
+          "Email delivery service is not configured. Please set BREVO_API_KEY in environment variables to receive verification emails."
         );
       }
       if (
+        err.message.includes("BREVO_DELIVERY_FAILED") ||
         err.message.includes("SMTP_DELIVERY_FAILED") ||
         err.message.includes("ECONNREFUSED") ||
         err.message.includes("ESOCKET") ||
         err.message.includes("ETIMEDOUT") ||
         err.message.includes("ENOTFOUND")
       ) {
-        console.error("[POST /api/auth/resend-otp] SMTP Connection/Send Error:", err.message);
-        return badRequest("Failed to send verification email. Please verify your email configuration.");
+        console.error("[POST /api/auth/resend-otp] Email delivery error:", err.message);
+        return badRequest("Failed to send verification email. Please verify your Brevo API configuration and internet connection.");
       }
     }
     console.error("[POST /api/auth/resend-otp]", err);

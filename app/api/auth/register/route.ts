@@ -1,4 +1,4 @@
-﻿import { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 import { verificationService } from "@/services/verification.service";
 import { validateBody } from "@/lib/validate";
 import { registerSchema } from "@/types";
@@ -36,28 +36,27 @@ export async function POST(req: NextRequest) {
           { status: 429 }
         );
       }
-      if (err.message.includes("SMTP_NOT_CONFIGURED") || err.message.includes("PRODUCTION_SMTP_UNCONFIGURED")) {
-        console.error("[POST /api/auth/register] SMTP unconfigured:", err.message);
+      if (
+        err.message.includes("BREVO_NOT_CONFIGURED") ||
+        err.message.includes("SMTP_NOT_CONFIGURED") ||
+        err.message.includes("PRODUCTION_SMTP_UNCONFIGURED")
+      ) {
+        console.error("[POST /api/auth/register] Email service unconfigured:", err.message);
         return badRequest(
-          "Email delivery service is not configured. Please set SMTP credentials in .env to receive verification emails."
-        );
-      }
-      if (err.message.includes("EAUTH")) {
-        console.error("[POST /api/auth/register] SMTP Authentication Failure");
-        return badRequest(
-          "Email delivery failed: SMTP authentication rejected. If using Gmail, please ensure you use a 16-character Google App Password (not your personal password)."
+          "Email delivery service is not configured. Please set BREVO_API_KEY in environment variables to receive verification emails."
         );
       }
       if (
+        err.message.includes("BREVO_DELIVERY_FAILED") ||
         err.message.includes("SMTP_DELIVERY_FAILED") ||
         err.message.includes("ECONNREFUSED") ||
         err.message.includes("ESOCKET") ||
         err.message.includes("ETIMEDOUT") ||
         err.message.includes("ENOTFOUND")
       ) {
-        console.error("[POST /api/auth/register] SMTP Connection/Send Error:", err.message);
+        console.error("[POST /api/auth/register] Email delivery error:", err.message);
         return badRequest(
-          "Failed to deliver verification email. Please check your SMTP host, port, and internet connection."
+          "Failed to deliver verification email. Please check your Brevo API configuration and internet connection."
         );
       }
     }
