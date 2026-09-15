@@ -3,6 +3,7 @@ import { signToken } from "@/lib/auth";
 import { userRepository } from "@/repositories/user.repository";
 import { RegisterInput, LoginInput } from "@/types";
 import { Prisma } from "@/app/generated/prisma";
+import { sendWelcomeEmail } from "@/services/emailService";
 
 const SALT_ROUNDS = 12;
 
@@ -173,6 +174,15 @@ export const authService = {
     );
 
     const token = signToken(newUser.id, newUser.role);
+
+    // Non-blocking welcome email side effect
+    sendWelcomeEmail({
+      to: newUser.email,
+      name: newUser.name,
+    }).catch((err) => {
+      console.warn("[AuthService] Welcome email dispatch warning for Google user:", err);
+    });
+
     const { googleId, ...safeNewUser } = newUser;
     void googleId;
     return { user: safeNewUser, token, isNew: true };
