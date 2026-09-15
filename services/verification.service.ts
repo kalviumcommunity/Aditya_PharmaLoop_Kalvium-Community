@@ -5,6 +5,7 @@ import { signToken } from "@/lib/auth";
 import { userRepository } from "@/repositories/user.repository";
 import { verificationRepository } from "@/repositories/verification.repository";
 import { sendVerificationOtpEmail } from "@/lib/email";
+import { sendWelcomeEmail } from "@/services/emailService";
 import { RegisterInput } from "@/types";
 
 const OTP_EXPIRY_MINUTES = 10;
@@ -260,6 +261,14 @@ export const verificationService = {
     });
 
     const token = signToken(user.id, user.role);
+
+    // Non-blocking welcome email side effect
+    sendWelcomeEmail({
+      to: user.email,
+      name: user.name,
+    }).catch((err) => {
+      console.warn("[VerificationService] Welcome email dispatch warning:", err);
+    });
 
     return { user, token };
   },
