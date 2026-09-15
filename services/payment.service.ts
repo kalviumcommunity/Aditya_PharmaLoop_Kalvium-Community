@@ -12,6 +12,10 @@ import { orderRepository } from "@/repositories/order.repository";
 import { subscriptionRepository } from "@/repositories/subscription.repository";
 import { addFrequencyPeriod } from "./refill.service";
 import { notificationService } from "./notification.service";
+import {
+  sendPaymentSuccessEmail,
+  sendPaymentFailedEmail,
+} from "@/services/emailService";
 
 const MAX_RETRIES = 3;
 
@@ -135,6 +139,7 @@ export const paymentService = {
     }
 
     try {
+      let isNewlyClaimed = false;
       const updated = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
           const claimed = await tx.payment.updateMany({
@@ -164,6 +169,8 @@ export const paymentService = {
             });
           }
 
+          isNewlyClaimed = true;
+
           await tx.paymentAttempt.create({
             data: { paymentId: payment.id, status: "SUCCESS" },
           });
@@ -191,6 +198,29 @@ export const paymentService = {
           title: "Order Confirmed",
           message: "Your order has been confirmed and is being prepared.",
         });
+
+        // Non-blocking payment success email side effect (sent once per successful payment)
+        if (isNewlyClaimed) {
+          (async () => {
+            try {
+              const user = await prisma.user.findUnique({
+                where: { id: userId },
+                select: { email: true, name: true },
+              });
+              if (user?.email) {
+                await sendPaymentSuccessEmail({
+                  to: user.email,
+                  name: user.name,
+                  orderId,
+                  paymentId: input.razorpayPaymentId,
+                  amount: updated.amount.toString(),
+                });
+              }
+            } catch (emailErr) {
+              console.warn("[PaymentService] Payment success email dispatch warning:", emailErr);
+            }
+          })().catch(() => {});
+        }
       }
 
       return updated;
@@ -248,6 +278,31 @@ export const paymentService = {
           ? `All ${MAX_RETRIES} payment attempts failed. Payment retry limit exceeded.`
           : `Payment attempt ${attemptCount} of ${MAX_RETRIES} failed. You can retry again.`,
     });
+
+    // Non-blocking payment failure email side effect
+    (async () => {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true, name: true },
+        });
+        if (user?.email) {
+          await sendPaymentFailedEmail({
+            to: user.email,
+            name: user.name,
+            orderId,
+            attemptCount,
+            maxRetries: MAX_RETRIES,
+            reason:
+              providerError?.description ||
+              providerError?.code ||
+              "Your payment was declined by the bank.",
+          });
+        }
+      } catch (emailErr) {
+        console.warn("[PaymentService] Payment failure email dispatch warning:", emailErr);
+      }
+    })().catch(() => {});
 
     // Refill retry exhaustion: restore stock + pause subscription immediately
     // (worker will also no-op safely if it runs later).
