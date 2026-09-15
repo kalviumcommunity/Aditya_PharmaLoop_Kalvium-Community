@@ -9,6 +9,10 @@ import { paymentService } from "./payment.service";
 import { notificationService } from "./notification.service";
 import { tryDecrementStock } from "@/lib/stock";
 import { CreateOrderInput } from "@/types";
+import {
+  sendOrderConfirmationEmail,
+  sendStatusUpdateEmail,
+} from "@/services/emailService";
 
 /**
  * Demo: 10 seconds per stage.
@@ -142,7 +146,42 @@ export const orderService = {
     await paymentService.processPayment(order.id, order.total, input.paymentMethod);
 
     const updatedOrder = await orderRepository.findById(order.id);
-    return updatedOrder ?? order;
+    const finalOrder = updatedOrder ?? order;
+
+    // Non-blocking order confirmation email side effect
+    (async () => {
+      try {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { email: true, name: true },
+        });
+        if (user?.email) {
+          const itemsSummary =
+            finalOrder.items?.map((it) => ({
+              name: it.product?.name || "Prescription Item",
+              quantity: it.quantity,
+              price: it.price.toString(),
+            })) || [];
+          const addressStr = finalOrder.address
+            ? `${finalOrder.address.address}, ${finalOrder.address.city}, ${finalOrder.address.state} ${finalOrder.address.postalCode}`
+            : undefined;
+
+          await sendOrderConfirmationEmail({
+            to: user.email,
+            name: user.name,
+            orderId: finalOrder.id,
+            items: itemsSummary,
+            total: finalOrder.total.toString(),
+            paymentMethod: input.paymentMethod,
+            shippingAddress: addressStr,
+          });
+        }
+      } catch (emailErr) {
+        console.warn("[OrderService] Order confirmation email dispatch warning:", emailErr);
+      }
+    })().catch(() => {});
+
+    return finalOrder;
   },
 
   async getOrders(userId: string) {
@@ -213,6 +252,26 @@ export const orderService = {
         .catch((err) =>
           console.warn("[syncDeliveryProgression] Notification warning:", err),
         );
+
+      // Non-blocking status progression email side effect
+      (async () => {
+        try {
+          const user = await prisma.user.findUnique({
+            where: { id: order.userId },
+            select: { email: true, name: true },
+          });
+          if (user?.email) {
+            await sendStatusUpdateEmail({
+              to: user.email,
+              name: user.name,
+              orderId,
+              status: nextStatus as "CONFIRMED" | "PROCESSING" | "SHIPPED" | "DELIVERED" | "CANCELLED",
+            });
+          }
+        } catch (emailErr) {
+          console.warn("[syncDeliveryProgression] Status email dispatch warning:", emailErr);
+        }
+      })().catch(() => {});
 
       currentStatus = nextStatus;
       statusTime = transitionTime.getTime();
